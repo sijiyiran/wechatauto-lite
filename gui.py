@@ -42,7 +42,7 @@ try:
 except Exception:
     _UPD = None
 
-VERSION = "1.3"
+VERSION = "1.4"
 
 # ─────────────────────────────────────────────────────────────── 色板 ──
 # 取自 awesome-design-md / linear.app DESIGN.md，按桌面小窗微调过对比度。
@@ -649,16 +649,33 @@ class App(tk.Tk):
             pass
 
     def _on_start_update(self, res):
-        """发现新版本时弹窗。"""
+        """发现新版本时弹窗：显示更新内容，让用户选是否更新。"""
         try:
-            yes = messagebox.askyesno(
-                APP_NAME,
-                "发现新版本 v{}\n\n当前 v{}\n\n现在去更新吗？".format(
-                    res["version"], VERSION))
-            if yes:
-                self.open_settings()
+            # 先拉 Release 里的更新说明
+            notes = ""
+            try:
+                rel = _UPD._get_json_with_sources(
+                    _UPD.API_TAG_SOURCES,
+                    {"repo": res["repo"], "tag": res["tag"]})
+                notes = (rel.get("body") or "").strip()
+            except Exception:
+                notes = "（取更新说明失败，可以稍后在设置里看）"
+
+            def _go_update():
+                # 打开设置页并落到「更新」tab
+                self.open_settings(tab="更新")
+
+            UpdateDialog(self, res, notes, on_update=_go_update)
         except Exception:
-            pass
+            # 兜底：退回原来的简单弹窗
+            try:
+                if messagebox.askyesno(
+                        APP_NAME,
+                        "发现新版本 v{}\n\n现在去更新吗？".format(
+                            res["version"])):
+                    self.open_settings(tab="更新")
+            except Exception:
+                pass
 
     # ---- 外观：把 ttk 控件统一刷成暗色（Linear 风格） ----
     def _ensure_on_screen(self):
@@ -1275,8 +1292,8 @@ class App(tk.Tk):
         for b in (self.btn_start, self.btn_stop, self.btn_restart):
             b.configure(state=state)
 
-    def open_settings(self):
-        Settings(self)
+    def open_settings(self, tab: str = ""):
+        Settings(self, tab=tab)
 
     def open_folder(self):
         self.open_path(ROOT)
@@ -1743,6 +1760,113 @@ class ScrollPage(ttk.Frame):
 
 
 # ────────────────────────────────────────────────────────────── 设置 ──
+
+def _clean_notes(text: str) -> str:
+    """把 Release 的 markdown 说明清理成好读的纯文本。
+
+    Text 控件不渲染 markdown，直接显示 `## v1.4 / **加粗**` 很难看。
+    """
+    import re as _re
+    s = (text or "").strip()
+    if not s:
+        return ""
+    s = _re.sub(r"^#{1,6}\s*", "", s, flags=_re.M)
+    s = s.replace("**", "").replace("`", "")
+    s = _re.sub(r"^\s*[-*+]\s+", "· ", s, flags=_re.M)
+    s = _re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
+class UpdateDialog(tk.Toplevel):
+    """发现新版本时的提示框：显示更新内容，让用户决定要不要更。"""
+
+    def __init__(self, master, info: dict, notes: str, on_update=None):
+        super().__init__(master)
+        self.title("发现新版本")
+        self.configure(bg=C["canvas"])
+        self.resizable(False, False)
+        # 不用 transient：master 若处于 withdraw 状态，transient 子窗口可能也不显示。
+        # 改成显式 deiconify + lift，保证一定浮到最前面。
+        self._on_update = on_update
+        self._notes = _clean_notes(notes) or "（这个版本没有写更新说明）"
+
+        W, H = 560, 460
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.geometry("{}x{}+{}+{}".format(
+            W, H, (sw - W) // 2, (sh - H) // 2 - 60))
+
+        # ── 顶部：版本 ──
+        head = tk.Frame(self, bg=C["canvas"], padx=20, pady=16)
+        head.pack(fill="x")
+        tk.Label(head, text="发现新版本", bg=C["canvas"], fg=C["ink-subtle"],
+                 font=(FONT, 9), anchor="w").pack(fill="x")
+        row = tk.Frame(head, bg=C["canvas"])
+        row.pack(fill="x", pady=(4, 0))
+        tk.Label(row, text="v" + VERSION, bg=C["canvas"], fg=C["ink-subtle"],
+                 font=(FONT, 15)).pack(side="left")
+        tk.Label(row, text="  →  ", bg=C["canvas"], fg=C["ink-subtle"],
+                 font=(FONT, 15)).pack(side="left")
+        tk.Label(row, text="v" + str(info.get("version", "?")),
+                 bg=C["canvas"], fg=C["accent-hi"],
+                 font=(FONT, 15, "bold")).pack(side="left")
+
+        # ── 更新说明（可滚动） ──
+        body = tk.Frame(self, bg=C["surface"],
+                        highlightbackground=C["hairline"],
+                        highlightthickness=1)
+        body.pack(fill="both", expand=True, padx=20)
+        tk.Label(body, text="更新了哪些功能", bg=C["surface"],
+                 fg=C["ink-subtle"], font=(FONT, 9), anchor="w",
+                 padx=14, pady=8).pack(fill="x")
+
+        wrap = tk.Frame(body, bg=C["surface"])
+        wrap.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        sb = ttk.Scrollbar(wrap, orient="vertical")
+        txt = tk.Text(wrap, wrap="word", font=(FONT, 9),
+                      background=C["term-bg"], foreground=C["ink"],
+                      relief="flat", bd=0, padx=12, pady=10,
+                      insertbackground=C["ink"],
+                      yscrollcommand=sb.set, height=14)
+        sb.configure(command=txt.yview)
+        sb.pack(side="right", fill="y")
+        txt.pack(side="left", fill="both", expand=True)
+        txt.insert("1.0", self._notes)
+        txt.configure(state="disabled")
+
+        # ── 按钮 ──
+        bar = tk.Frame(self, bg=C["canvas"], padx=20, pady=14)
+        bar.pack(fill="x")
+        tk.Label(bar, text="更新只下载变化的文件，不动配置和记忆",
+                 bg=C["canvas"], fg=C["ink-subtle"],
+                 font=(FONT, 8)).pack(side="left")
+        ttk.Button(bar, text="立即更新", style="Accent.TButton",
+                   cursor="hand2", command=self._do_update).pack(side="right")
+        ttk.Button(bar, text="稍后再说", style="TButton",
+                   cursor="hand2", command=self.destroy).pack(
+            side="right", padx=(0, 8))
+
+        try:
+            self.deiconify()
+            self.lift()
+            self.attributes("-topmost", True)
+            self.after(120, lambda: self.attributes("-topmost", False))
+            self.focus_force()
+        except Exception:
+            pass
+        try:
+            fade_window(self, 220)
+        except Exception:
+            pass
+
+    def _do_update(self):
+        self.destroy()
+        if self._on_update:
+            try:
+                self._on_update()
+            except Exception:
+                pass
+
+
 class Settings(tk.Toplevel):
     """把 config.json 里常用的项做成表单。
 
@@ -1750,8 +1874,9 @@ class Settings(tk.Toplevel):
     免得界面变成长长的参数表把人吓跑。
     """
 
-    def __init__(self, master: App):
+    def __init__(self, master: App, tab: str = ""):
         super().__init__(master)
+        self._initial_tab = tab
         self.title("设置")
         self.geometry("900x700")
         self.minsize(760, 560)
@@ -1782,6 +1907,16 @@ class Settings(tk.Toplevel):
             self._tab_relay(nb)
         # 更新页：两个版本都要有
         self._tab_update(nb)
+
+        # 从「发现新版本」跳过来时，直接落到「更新」页
+        try:
+            if getattr(self, "_initial_tab", ""):
+                for i in range(nb.index("end")):
+                    if nb.tab(i, "text") == self._initial_tab:
+                        nb.select(i)
+                        break
+        except Exception:
+            pass
 
         bar = tk.Frame(self, bg=C["canvas"])
         bar.pack(fill="x", padx=16, pady=(4, 12))

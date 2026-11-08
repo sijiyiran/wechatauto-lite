@@ -1,7 +1,7 @@
 {
-  "version": "1.3",
+  "version": "1.4",
   "edition": "portable",
-  "generated_at": "2026-11-08T14:02:05",
+  "generated_at": "2026-11-08T14:37:06",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -44,15 +44,15 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "f0e00562722bc2f14423a9f7393281dee67bfd0020662918732ac94e36521fde",
-      "size": 121762
+      "sha256": "affb75caaac5f6511fc98907b77f3dd950e1ef0d9042ddef8503d80c5076f513",
+      "size": 127496
     },
     "install-keepalive.ps1": {
       "sha256": "4105847609425b1b99ddaf00e93389bf36280a857b724cd3c75b51e912f2fffe",
       "size": 4772
     },
     "installer.iss": {
-      "sha256": "3507c99cfc4a1babdb35a806a32d94049cc821da6e5b970b63d6b378c86ffddc",
+      "sha256": "ca2a3e88f5d599617c5b5229a307d3df5ad0fd8a02b345e374811285b9c855a4",
       "size": 6348
     },
     "keepalive.py": {
@@ -500,8 +500,8 @@
       "size": 16763
     },
     "updater.py": {
-      "sha256": "e231a992eda4eecacaefccdc9319744f642e89f8d8ee398b14b89922964c18a2",
-      "size": 14574
+      "sha256": "6cd85e260818b68234775b270838e34d69d4495c68d80f537539ea624252671f",
+      "size": 14592
     }
   }
 }

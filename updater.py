@@ -221,11 +221,18 @@ def _ver_tuple(v: str) -> tuple:
 
 # ────────────────────────────── 计划 ──
 def fetch_manifest(manifest_url: str) -> dict:
-    """下载 manifest.json（Release assets 直链 + ghproxy 回退）。"""
+    """下载 manifest.json（Release assets 直链 + ghproxy 回退）。
+
+    **必须带 cache-bust 参数。** 踩过（2026-11-08）：
+    GitHub Release asset 前面有 CDN，刚上传的 manifest 用原 URL 拉到的
+    还是旧内容（实测 35 文件 vs 34 文件、hash 也是旧的），
+    导致「刚更新完又提示要下载」。加 `?t=<时间戳>` 就能绕过。
+    """
+    bust = "?t={}".format(int(time.time()))
     urls = [
-        manifest_url,
-        "https://ghproxy.net/" + manifest_url,
-        "https://gh-proxy.com/" + manifest_url,
+        manifest_url + bust,
+        "https://ghproxy.net/" + manifest_url + bust,
+        "https://gh-proxy.com/" + manifest_url + bust,
     ]
     errors = []
     for u in urls:

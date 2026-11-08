@@ -98,6 +98,13 @@ API_TAG_SOURCES = [
     "https://gh-proxy.com/https://api.github.com/repos/{repo}/releases/tags/{tag}",
 ]
 
+# 查 main 分支最新 commit（用来做**穿透 CDN 缓存**的版本标识）
+COMMIT_SOURCES = [
+    "https://api.github.com/repos/{repo}/commits/main",
+    "https://ghproxy.net/https://api.github.com/repos/{repo}/commits/main",
+    "https://gh-proxy.com/https://api.github.com/repos/{repo}/commits/main",
+]
+
 # 并发下载线程数
 DOWNLOAD_WORKERS = 8
 
@@ -203,9 +210,18 @@ def check_latest(cfg: dict, edition: str) -> dict | None:
     if not manifest_url:
         raise UpdateError("Release {} 里没有 manifest.json".format(tag))
 
+    # **拿 main 的最新 commit sha** —— CDN 按 tag 缓存不刷新，按 sha 才会实时。
+    commit = ""
+    try:
+        c = _get_json_with_sources(COMMIT_SOURCES, {"repo": repo})
+        commit = (c.get("sha") or "").strip()
+    except Exception:
+        commit = ""
+
     return {
         "version": version,
         "tag": tag,
+        "commit": commit,        # 优先用这个当 ref
         "repo": repo,
         "manifest_url": manifest_url,
     }
@@ -223,7 +239,7 @@ def _ver_tuple(v: str) -> tuple:
 
 # ────────────────────────────── 计划 ──
 def fetch_manifest(manifest_url: str, repo: str = "",
-                   tag: str = "") -> dict:
+                   ref: str = "") -> dict:
     """下载 manifest.json（Release assets 直链 + ghproxy 回退）。
 
     **必须带 cache-bust 参数。** 踩过（2026-11-08）：
@@ -236,14 +252,15 @@ def fetch_manifest(manifest_url: str, repo: str = "",
     # **优先走 jsDelivr 拉仓库里的 manifest.json** ——
     # Release asset 走 github.com（2026-11-08 实测被阻断），
     # 而 jsDelivr 走国内 CDN，还支持 ?t= 穿透缓存。
-    if repo and tag:
+    if repo and ref:
+        # ref 优先传 commit sha（CDN 按 tag 缓存不刷新，按 sha 才实时）
         urls += [
-            "https://cdn.jsdelivr.net/gh/{repo}@{tag}/manifest.json{bust}"
-            .format(repo=repo, tag=tag, bust=bust),
-            "https://fastly.jsdelivr.net/gh/{repo}@{tag}/manifest.json{bust}"
-            .format(repo=repo, tag=tag, bust=bust),
-            "https://gcore.jsdelivr.net/gh/{repo}@{tag}/manifest.json{bust}"
-            .format(repo=repo, tag=tag, bust=bust),
+            "https://cdn.jsdelivr.net/gh/{repo}@{ref}/manifest.json{bust}"
+            .format(repo=repo, ref=ref, bust=bust),
+            "https://fastly.jsdelivr.net/gh/{repo}@{ref}/manifest.json{bust}"
+            .format(repo=repo, ref=ref, bust=bust),
+            "https://gcore.jsdelivr.net/gh/{repo}@{ref}/manifest.json{bust}"
+            .format(repo=repo, ref=ref, bust=bust),
         ]
     # Release asset 兜底
     urls += [
@@ -307,12 +324,12 @@ def plan(local_dir: pathlib.Path, manifest: dict,
 
 
 # ────────────────────────────── 下载 ──
-def _download_one(repo: str, tag: str, rel: str,
+def _download_one(repo: str, ref: str, rel: str,
                   local_dir: pathlib.Path) -> tuple:
     """下载单个文件，多源回退。返回 (rel, 是否成功, 来源/错误)。"""
     errors = []
     for tpl in FILE_SOURCES:
-        url = tpl.format(repo=repo, tag=tag, path=rel)
+        url = tpl.format(repo=repo, tag=ref, path=rel)
         try:
             data = _get(url, timeout=45)
             if not data:
@@ -333,7 +350,7 @@ def _download_one(repo: str, tag: str, rel: str,
     return rel, False, " | ".join(errors[:2])
 
 
-def apply_update(local_dir: pathlib.Path, repo: str, tag: str,
+def apply_update(local_dir: pathlib.Path, repo: str, ref: str,
                  plan_result: dict, progress=None,
                  workers: int = DOWNLOAD_WORKERS) -> dict:
     """按计划并发下载 / 删除。"""
@@ -347,7 +364,7 @@ def apply_update(local_dir: pathlib.Path, repo: str, tag: str,
         with concurrent.futures.ThreadPoolExecutor(
                 max_workers=min(workers, max(1, n))) as ex:
             futures = {
-                ex.submit(_download_one, repo, tag, rel, local_dir): rel
+                ex.submit(_download_one, repo, ref, rel, local_dir): rel
                 for rel in todo
             }
             for fut in concurrent.futures.as_completed(futures):

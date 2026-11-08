@@ -39,10 +39,10 @@ DEFAULT_REPOS = {
 
 # 允许被更新器下载/删除的文件类型。
 MANAGED_SUFFIXES = {
-    ".py", ".md", ".iss", ".isl", ".ico", ".cmd", ".ps1",
+    ".py", ".md", ".iss", ".isl", ".ico", ".cmd", ".ps1", ".jpg",
 }
 MANAGED_NAMES = {"stickers.json"}
-MANAGED_DIRS = {"prompts"}
+MANAGED_DIRS = {"prompts", "splash_frames"}
 
 EXCLUDE_PREFIXES = (
     "_", "@", "dist/", "node_modules/", "__pycache__/", "build/",

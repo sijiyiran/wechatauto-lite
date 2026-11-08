@@ -556,8 +556,9 @@ def run_script(name: str) -> tuple[bool, str]:
 
 # ────────────────────────────────────────────────────────────── 主面板 ──
 class App(tk.Tk):
-    def __init__(self):
+    def __init__(self, skip_start_check: bool = False):
         super().__init__()
+        self._skip_start_check = skip_start_check
         # 先读配置 —— 下面 edition_info / 标题 / 外观都要用它
         self.cfg = load_cfg()
         _ed_txt, _ed_color, _ed_note = edition_info(self.cfg)
@@ -608,7 +609,9 @@ class App(tk.Tk):
         # 最小化窗口的标准坐标。用户看到的是"窗口没了"。
         self.after(300, self._ensure_on_screen)
         # 启动 3 秒后后台查一次更新（不阻塞界面）
-        self.after(3000, self._check_update_on_start)
+        # 用启动动画时，检查已经在 splash 里做过，这里就不再重复
+        if not getattr(self, "_skip_start_check", False):
+            self.after(3000, self._check_update_on_start)
 
 
     # ---- 启动检查更新 ----
@@ -2644,7 +2647,32 @@ class Settings(tk.Toplevel):
 
 
 def main():
-    app = App()
+    """启动流程：先显示开启动画（检查更新 + 资源完整性），完成后进主界面。"""
+    app = App(skip_start_check=True)
+    app.withdraw()
+
+    try:
+        import splash as _SPLASH
+        def _on_splash_done():
+            try:
+                app.deiconify()
+                # 主窗口淡入
+                fade_window(app, 300)
+            except Exception:
+                pass
+
+        sp = _SPLASH.SplashScreen(
+            app, checker=_SPLASH.make_checker(ROOT))
+        sp._on_done = _on_splash_done
+    except Exception as e:
+        # 启动动画挂了不能连带启动失败
+        try:
+            print("[启动] 开启动画跳过：{}: {}".format(
+                type(e).__name__, e), file=sys.stderr)
+        except Exception:
+            pass
+        app.deiconify()
+
     app.mainloop()
 
 

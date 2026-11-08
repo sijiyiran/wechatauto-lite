@@ -1,7 +1,7 @@
 {
   "version": "1.4",
   "edition": "portable",
-  "generated_at": "2026-11-08T15:00:18",
+  "generated_at": "2026-11-08T15:36:02",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -28,8 +28,8 @@
       "size": 11537
     },
     "emotion.py": {
-      "sha256": "ec3a06afea7b5ec9a4af1a25053599ef9d9c0d5013b182db26dc0be4622350c9",
-      "size": 29797
+      "sha256": "a9d1dffc130e72afb778b1badc91e208b36982b6bdea4481cf133ab2508166e6",
+      "size": 30145
     },
     "features.py": {
       "sha256": "9b8686c8aa95b50c9d2cd0f2db264001a8d45bdefc1077eb34a394cebffb040c",
@@ -84,8 +84,8 @@
       "size": 12388
     },
     "prompts/persona.md": {
-      "sha256": "8f1a66ed7b0f547bae0bd47298cee369eb530e4089a72559e3aac647b0147ce3",
-      "size": 18482
+      "sha256": "816ab38a675518b5e4544486c960d6a7dbe9b6345e910bf9a4f25298610d821c",
+      "size": 20213
     },
     "prompts/simulation.md": {
       "sha256": "43029e6605e2bf62fa8f476edd1d90a975c632e30b7e18b20d8b51ed64cba038",

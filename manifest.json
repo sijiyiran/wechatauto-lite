@@ -1,12 +1,8 @@
 {
   "version": "1.3",
   "edition": "portable",
-  "generated_at": "2026-11-08T09:35:53",
+  "generated_at": "2026-11-08T09:41:02",
   "files": {
-    "README.md": {
-      "sha256": "863418e4fe75a7586a9063d40d094a9e4291415cfd573ac307cd7b788e85790c",
-      "size": 840
-    },
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
       "size": 308
@@ -140,8 +136,8 @@
       "size": 16763
     },
     "updater.py": {
-      "sha256": "22c32573ca1ca3e02caa1529e674ae0deebfb6d267aa5659b7130ced133915a9",
-      "size": 14069
+      "sha256": "0c058b435e1f3bad8d59964e51e5aef5fc2f882da3aa99f2fe5147f32ef1aa31",
+      "size": 14158
     }
   }
 }

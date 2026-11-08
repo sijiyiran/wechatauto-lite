@@ -2425,7 +2425,9 @@ class Settings(tk.Toplevel):
 
         def work():
             try:
-                manifest = _UPD.fetch_manifest(res["manifest_url"], res["repo"], res["tag"])
+                manifest = _UPD.fetch_manifest(
+                        res["manifest_url"], res["repo"],
+                        res.get("commit") or res["tag"])
                 plan = _UPD.plan(ROOT, manifest, edition)
                 total = len(plan["to_download"])
                 self.after(0, lambda: self._upd_set(
@@ -2439,8 +2441,10 @@ class Settings(tk.Toplevel):
                     self.after(0, lambda: self._upd_set(
                         "下载中 {}/{}：{}".format(i, n2, rel)))
 
-                stat = _UPD.apply_update(ROOT, res["repo"], res["tag"],
-                                         plan, progress=prog)
+                stat = _UPD.apply_update(
+                    ROOT, res["repo"],
+                    res.get("commit") or res["tag"],
+                    plan, progress=prog)
                 self.after(0, lambda: self._upd_done(res, stat))
             except Exception as e:
                 msg = str(e)

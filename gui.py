@@ -35,7 +35,14 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
 APP_NAME = "WeChat 自动回复"
-VERSION = "1.2"
+# 自动更新（GitHub Release）
+_UPD = None
+try:
+    import updater as _UPD
+except Exception:
+    _UPD = None
+
+VERSION = "1.3"
 
 # ─────────────────────────────────────────────────────────────── 色板 ──
 # 取自 awesome-design-md / linear.app DESIGN.md，按桌面小窗微调过对比度。
@@ -600,6 +607,55 @@ class App(tk.Tk):
         # 上次异常退出）会把窗口放在 (-32000,-32000) —— 那是 Windows
         # 最小化窗口的标准坐标。用户看到的是"窗口没了"。
         self.after(300, self._ensure_on_screen)
+        # 启动 3 秒后后台查一次更新（不阻塞界面）
+        self.after(3000, self._check_update_on_start)
+
+
+    # ---- 启动检查更新 ----
+    def _check_update_on_start(self):
+        """启动后后台查一次更新，有新版本弹窗提醒。
+
+        为什么要 try 包住所有东西：查更新要走网络，
+        没网/仓库没配/GitHub 抽风都不能影响开机。
+        """
+        try:
+            if _UPD is None:
+                return
+            cfg = load_cfg()
+            if not dig(cfg, "update.check_on_start", True):
+                return
+            if not dig(cfg, "update.enabled", True):
+                return
+            edition = (dig(cfg, "ui.edition", "") or
+                       dig(cfg, "update.edition", "") or "dev")
+            repo = _UPD.repo_of(cfg, edition)
+            if not repo:
+                return      # 还没配置仓库，静默跳过
+
+            def work():
+                try:
+                    res = _UPD.check_latest(cfg, edition)
+                except Exception:
+                    return
+                if res:
+                    self.after(0, lambda: self._on_start_update(res))
+
+            import threading
+            threading.Thread(target=work, daemon=True).start()
+        except Exception:
+            pass
+
+    def _on_start_update(self, res):
+        """发现新版本时弹窗。"""
+        try:
+            yes = messagebox.askyesno(
+                APP_NAME,
+                "发现新版本 v{}\n\n当前 v{}\n\n现在去更新吗？".format(
+                    res["version"], VERSION))
+            if yes:
+                self.open_settings()
+        except Exception:
+            pass
 
     # ---- 外观：把 ttk 控件统一刷成暗色（Linear 风格） ----
     def _ensure_on_screen(self):
@@ -1721,6 +1777,8 @@ class Settings(tk.Toplevel):
             self._tab_moments(nb)
             self._tab_friend_requests(nb)
             self._tab_relay(nb)
+        # 更新页：两个版本都要有
+        self._tab_update(nb)
 
         bar = tk.Frame(self, bg=C["canvas"])
         bar.pack(fill="x", padx=16, pady=(4, 12))
@@ -1772,6 +1830,11 @@ class Settings(tk.Toplevel):
             v = tk.StringVar(value=list_to_text(cur))
             w = ttk.Spinbox(parent, textvariable=v, from_=kw.get("lo", 0),
                             to=kw.get("hi", 999), width=50)
+        elif kind == "label":
+            # 只读文字（版本号、更新源这类不需要编辑的）
+            v = tk.StringVar(value=str(cur))
+            w = tk.Label(parent, textvariable=v, background=C["canvas"],
+                         foreground=C["ink"], font=(FONT, 9), anchor="w")
         else:
             raise ValueError(kind)
         w.grid(row=gr, column=1, sticky="w", pady=(8, 0))
@@ -2099,6 +2162,183 @@ class Settings(tk.Toplevel):
                 messagebox.showerror(APP_NAME, "找不到也建不了：{}".format(e))
                 return
         self.master.open_path(p)
+
+
+    # ---- 更新 ----
+    def _edition(self) -> str:
+        """当前是哪个版本（决定去哪个仓库查更新）。"""
+        return str(dig(self.cfg, "ui.edition", "") or
+                   dig(self.cfg, "update.edition", "") or "dev")
+
+    def _tab_update(self, nb):
+        f = self._page(nb, "更新")
+
+        self._row(f, 0, "当前版本", "label", "", default="v" + VERSION)
+        repo = ""
+        try:
+            repo = _UPD.repo_of(self.cfg, self._edition()) if _UPD else ""
+        except Exception:
+            repo = ""
+        self._row(f, 1, "更新源", "label", "",
+                  default=repo or "（还没配置 GitHub 仓库）")
+        self._row(f, 2, "版本类型", "label", "", default=self._edition())
+
+        bar = tk.Frame(f, bg=C["canvas"])
+        bar.grid(row=self._next_row(f), column=0, columnspan=3,
+                 sticky="w", pady=(18, 0))
+        self.btn_check_upd = ttk.Button(
+            bar, text="检查更新", style="TButton", cursor="hand2",
+            command=self._check_update)
+        self.btn_check_upd.pack(side="left")
+        self.btn_do_upd = ttk.Button(
+            bar, text="立即更新", style="Accent.TButton", cursor="hand2",
+            state="disabled", command=self._do_update)
+        self.btn_do_upd.pack(side="left", padx=(10, 0))
+
+        self.lbl_upd = tk.Label(
+            f, text="点「检查更新」看看有没有新版本",
+            bg=C["canvas"], fg=C["ink-subtle"], justify="left",
+            wraplength=680, font=(FONT, 9), anchor="w")
+        self.lbl_upd.grid(row=self._next_row(f), column=0, columnspan=3,
+                          sticky="w", pady=(14, 0))
+
+        self.prog_upd = ttk.Progressbar(f, mode="determinate",
+                                        length=420, maximum=100)
+        self.prog_upd.grid(row=self._next_row(f), column=0, columnspan=3,
+                           sticky="w", pady=(8, 0))
+
+        self.txt_upd_notes = tk.Text(
+            f, height=7, width=72, wrap="word", font=(FONT, 9),
+            background=C["surface-2"], foreground=C["ink"],
+            relief="flat", bd=0, padx=10, pady=8)
+        self.txt_upd_notes.grid(row=self._next_row(f), column=0, columnspan=3,
+                                sticky="we", pady=(10, 0))
+        self.txt_upd_notes.insert("1.0", "（这里显示新版本的更新说明）")
+        self.txt_upd_notes.configure(state="disabled")
+
+        self._note(
+            f,
+            "更新只下载变化的文件（按 sha256 对比），不会整个重下；"
+            "本地多出来的程序文件会被删掉。\n"
+            "config.json / 记忆 / 日志 / 人格卡这类私人内容都不会被动。"
+            "更新完需要重启程序。")
+
+        self._upd_result = None
+
+    def _check_update(self):
+        if _UPD is None:
+            self._upd_set("更新模块没加载（updater.py 缺失）", err=True)
+            return
+        self.btn_check_upd.configure(state="disabled")
+        self._upd_set("正在检查…")
+        cfg = load_cfg()
+        edition = self._edition()
+
+        def work():
+            try:
+                res = _UPD.check_latest(cfg, edition)
+                self.after(0, lambda: self._upd_checked(res, None))
+            except Exception as e:
+                msg = str(e)
+                self.after(0, lambda: self._upd_checked(None, msg))
+
+        import threading
+        threading.Thread(target=work, daemon=True).start()
+
+    def _upd_checked(self, res, err):
+        self.btn_check_upd.configure(state="normal")
+        if err:
+            self._upd_set("检查失败：" + err, err=True)
+            return
+        if not res:
+            self._upd_set("已经是最新版本（v{}）".format(VERSION))
+            self.btn_do_upd.configure(state="disabled")
+            return
+        self._upd_result = res
+        self._upd_set("发现新版本：v{}  →  v{}".format(VERSION, res["version"]))
+        self.btn_do_upd.configure(state="normal")
+        body = "（取更新说明失败）"
+        try:
+            # 走 updater 的国内加速源，别直连 api.github.com
+            rel = _UPD._get_json_with_sources(
+                _UPD.API_TAG_SOURCES,
+                {"repo": res["repo"], "tag": res["tag"]})
+            body = (rel.get("body") or "").strip() or "（这次没有写说明）"
+        except Exception:
+            pass
+        self.txt_upd_notes.configure(state="normal")
+        self.txt_upd_notes.delete("1.0", "end")
+        self.txt_upd_notes.insert("1.0", body)
+        self.txt_upd_notes.configure(state="disabled")
+
+    def _do_update(self):
+        if not self._upd_result or _UPD is None:
+            return
+        res = self._upd_result
+        if not messagebox.askyesno(
+                APP_NAME,
+                "确认更新到 v{}？\n\n只会下载变化的文件，"
+                "更新完需要重启程序。".format(res["version"])):
+            return
+        self.btn_do_upd.configure(state="disabled")
+        self.btn_check_upd.configure(state="disabled")
+        self._upd_set("正在准备…")
+        edition = self._edition()
+
+        def work():
+            try:
+                manifest = _UPD.fetch_manifest(res["manifest_url"])
+                plan = _UPD.plan(ROOT, manifest, edition)
+                total = len(plan["to_download"])
+                self.after(0, lambda: self._upd_set(
+                    "需要下载 {} 个文件，删除 {} 个".format(
+                        total, len(plan["to_delete"]))))
+                self.after(0, lambda: self.prog_upd.configure(
+                    maximum=max(1, total), value=0))
+
+                def prog(i, n2, rel):
+                    self.after(0, lambda: self.prog_upd.configure(value=i))
+                    self.after(0, lambda: self._upd_set(
+                        "下载中 {}/{}：{}".format(i, n2, rel)))
+
+                stat = _UPD.apply_update(ROOT, res["repo"], res["tag"],
+                                         plan, progress=prog)
+                self.after(0, lambda: self._upd_done(res, stat))
+            except Exception as e:
+                msg = str(e)
+                self.after(0, lambda: self._upd_set("更新失败：" + msg, err=True))
+                self.after(0, lambda: self.btn_check_upd.configure(state="normal"))
+
+        import threading
+        threading.Thread(target=work, daemon=True).start()
+
+    def _upd_done(self, res, stat):
+        self.prog_upd.configure(value=self.prog_upd.cget("maximum"))
+        ok = len(stat["downloaded"])
+        if stat["failed"]:
+            self._upd_set("部分失败：成功 {}，失败 {}".format(
+                ok, len(stat["failed"])), err=True)
+            return
+        self._upd_set("更新完成：下载 {} 个，删除 {} 个。请重启程序。".format(
+            ok, len(stat["deleted"])))
+        try:
+            cfg = load_cfg()
+            cfg["version"] = res["version"]
+            save_cfg(cfg)
+        except Exception:
+            pass
+        messagebox.showinfo(
+            APP_NAME,
+            "已更新到 v{}\n\n下载 {} 个文件，删除 {} 个。\n\n"
+            "请关闭程序后重新打开。".format(
+                res["version"], ok, len(stat["deleted"])))
+
+    def _upd_set(self, text, err=False):
+        try:
+            self.lbl_upd.configure(
+                text=text, fg=(C["err"] if err else C["ink-subtle"]))
+        except Exception:
+            pass
 
 
     # ---- 表情包管理 ----

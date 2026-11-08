@@ -1,8 +1,12 @@
 {
   "version": "1.3",
   "edition": "portable",
-  "generated_at": "2026-11-08T09:26:03",
+  "generated_at": "2026-11-08T09:35:03",
   "files": {
+    "README.md": {
+      "sha256": "863418e4fe75a7586a9063d40d094a9e4291415cfd573ac307cd7b788e85790c",
+      "size": 840
+    },
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
       "size": 308
@@ -44,12 +48,16 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "a2418e65b8525d87e0f01c60252ce3ca3680a710cf8b4b95d33d7821519da1c4",
-      "size": 110799
+      "sha256": "307a5e83ea7f5979a64bb9bb0a3768e606e588d53ce345e21e54f25047f0a333",
+      "size": 120698
     },
     "install-keepalive.ps1": {
       "sha256": "4105847609425b1b99ddaf00e93389bf36280a857b724cd3c75b51e912f2fffe",
       "size": 4772
+    },
+    "installer.iss": {
+      "sha256": "3507c99cfc4a1babdb35a806a32d94049cc821da6e5b970b63d6b378c86ffddc",
+      "size": 6348
     },
     "keepalive.py": {
       "sha256": "557108c7077ff4da65131cfd60252c288b9417bd00950d369cbfc23b7379082f",
@@ -130,6 +138,10 @@
     "unbound_check.py": {
       "sha256": "baa18b4081be27c1e233df09f3de24a7a5061959936033acdfdfe83c31e844e2",
       "size": 16763
+    },
+    "updater.py": {
+      "sha256": "67c7b15b4894f531cd509c1b8a39e3e29bd4aae1eb046304b51ecec3a58108dd",
+      "size": 13931
     }
   }
 }

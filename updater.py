@@ -83,17 +83,19 @@ FILE_SOURCES = [
 ]
 
 # 查最新 release 的 API 源
+# 实测（2026-11-08 下午）：github.com 被阻断，但 api.github.com 通（1.8s）。
+# 所以 API 直连放第一，镜像放后面兜底。
 API_SOURCES = [
+    "https://api.github.com/repos/{repo}/releases/latest",
     "https://ghproxy.net/https://api.github.com/repos/{repo}/releases/latest",
     "https://gh-proxy.com/https://api.github.com/repos/{repo}/releases/latest",
-    "https://api.github.com/repos/{repo}/releases/latest",
 ]
 
 # 更新说明的 API 源（按 tag 查）
 API_TAG_SOURCES = [
+    "https://api.github.com/repos/{repo}/releases/tags/{tag}",
     "https://ghproxy.net/https://api.github.com/repos/{repo}/releases/tags/{tag}",
     "https://gh-proxy.com/https://api.github.com/repos/{repo}/releases/tags/{tag}",
-    "https://api.github.com/repos/{repo}/releases/tags/{tag}",
 ]
 
 # 并发下载线程数
@@ -220,7 +222,8 @@ def _ver_tuple(v: str) -> tuple:
 
 
 # ────────────────────────────── 计划 ──
-def fetch_manifest(manifest_url: str) -> dict:
+def fetch_manifest(manifest_url: str, repo: str = "",
+                   tag: str = "") -> dict:
     """下载 manifest.json（Release assets 直链 + ghproxy 回退）。
 
     **必须带 cache-bust 参数。** 踩过（2026-11-08）：
@@ -229,7 +232,21 @@ def fetch_manifest(manifest_url: str) -> dict:
     导致「刚更新完又提示要下载」。加 `?t=<时间戳>` 就能绕过。
     """
     bust = "?t={}".format(int(time.time()))
-    urls = [
+    urls = []
+    # **优先走 jsDelivr 拉仓库里的 manifest.json** ——
+    # Release asset 走 github.com（2026-11-08 实测被阻断），
+    # 而 jsDelivr 走国内 CDN，还支持 ?t= 穿透缓存。
+    if repo and tag:
+        urls += [
+            "https://cdn.jsdelivr.net/gh/{repo}@{tag}/manifest.json{bust}"
+            .format(repo=repo, tag=tag, bust=bust),
+            "https://fastly.jsdelivr.net/gh/{repo}@{tag}/manifest.json{bust}"
+            .format(repo=repo, tag=tag, bust=bust),
+            "https://gcore.jsdelivr.net/gh/{repo}@{tag}/manifest.json{bust}"
+            .format(repo=repo, tag=tag, bust=bust),
+        ]
+    # Release asset 兜底
+    urls += [
         manifest_url + bust,
         "https://ghproxy.net/" + manifest_url + bust,
         "https://gh-proxy.com/" + manifest_url + bust,

@@ -1,7 +1,7 @@
 {
-  "version": "1.5",
+  "version": "1.6",
   "edition": "portable",
-  "generated_at": "2026-11-08T21:50:19",
+  "generated_at": "2026-11-08T22:04:12",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -44,7 +44,7 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "3282b41bd4645eed0e064193c16ac73b88a923886ebe46cc686609dbee36732d",
+      "sha256": "0ebdc9d485e106b491dfb3e924ca3f39743bf3ca214648883dccfbd477e2b19d",
       "size": 127636
     },
     "install-keepalive.ps1": {
@@ -52,7 +52,7 @@
       "size": 4772
     },
     "installer.iss": {
-      "sha256": "467fa73d792f81de9d578b58342325254f82494e4b366a2ebc809438ecc25114",
+      "sha256": "398dcc402587c2e537c936a931e21db74b2cd6314a17656064ca2e72c564e4ea",
       "size": 6348
     },
     "keepalive.py": {
@@ -475,10 +475,6 @@
       "sha256": "740dd48d2d6b98837109e8104b930d0f59c5646c5d50d057736d6011db799252",
       "size": 1828
     },
-    "stickers.json": {
-      "sha256": "3c4ac6bca4dce1ea87264234f6a2820349fb391e51d919898ac08c2d1311d00a",
-      "size": 1783
-    },
     "stop-daemon.cmd": {
       "sha256": "c7dc27ed6060cb4a22f342b67cd67f4a33ffe82ac1508a51466d199950dca954",
       "size": 1433
@@ -492,8 +488,8 @@
       "size": 16763
     },
     "updater.py": {
-      "sha256": "5c0204116678fac56d3b82e864e677e72734185867e003ff7858761facadf089",
-      "size": 16497
+      "sha256": "72c8edd7148054fbd518a82014b9f109b06a94a67b0107adc1e935755e5d620f",
+      "size": 16794
     }
   }
 }

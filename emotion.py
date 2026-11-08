@@ -64,13 +64,13 @@ DIM_CN = {
 
 # 回落速度：慢变量 0.03，情绪类 0.04~0.05
 DECAY_RATE = {
-    "attachment": 0.03,
+    "attachment": 0.001,
     "curiosity": 0.04,
     "reflection": 0.03,
     "duty": 0.03,
     "social": 0.04,
     "fatigue": 0.05,
-    "intimacy": 0.03,
+    "intimacy": 0.001,
     "stress": 0.05,
     "joy": 0.05,
 }
@@ -154,8 +154,14 @@ def mode_of(blame: float) -> str:
 
 # ═════════════════════════════ 事件 → 增量 ═════════════════════════════
 EVENT_EFFECTS = {
-    "user_msg":     {"social": 2.0, "joy": 1.0, "curiosity": 0.8, "fatigue": 0.6},
-    "share":        {"curiosity": 3.0, "joy": 2.0, "social": 1.0},
+    # **日常聊天要能慢慢积累感情。**
+    # 踩过（2026-11-08）：user_msg 原来只涨 social/joy/curiosity，
+    # 而好感度公式的主力是 attachment+intimacy —— 结果聊一整天好感度纹丝不动。
+    # 加的量很小（一轮 +0.1），靠长期积累，不是聊一句就亲近。
+    "user_msg":     {"social": 2.0, "joy": 1.0, "curiosity": 0.8, "fatigue": 0.6,
+                     "attachment": 0.28, "intimacy": 0.16},
+    "share":        {"curiosity": 3.0, "joy": 2.0, "social": 1.0,
+                     "attachment": 0.38, "intimacy": 0.22},
     "request":      {"duty": 4.0, "social": 1.0, "fatigue": 1.5},
     "apology":      {"stress": -3.0, "blame": -6.0, "joy": 2.0,
                      "attachment": 1.0, "reflection": -3.0},
@@ -610,13 +616,17 @@ def snapshot() -> dict:
     drives = st["drives"]
     mode = mode_of(float(st.get("blame_pressure", 0.0)))
 
-    # 好感度：把几个核心维度合成一个 0~100 的总分，方便展示
-    # 权重：依恋 30% + 亲密 25% + 喜悦 20% + 压力(反向) 15% + 社交 10%
+    # 好感度：把几个核心维度合成一个 0~100 的总分，方便展示。
+    # 权重（合计 1.00）：
+    #   依恋 30% + 亲密 22% + 喜悦 14% + 好奇 10% + 压力(反向) 10% + 社交 14%
+    # 踩过（2026-11-08）：原来没有 curiosity、social 只有 10%，
+    # 而日常聊天涨的正是这两项 —— 结果好感度永远贴着基线不动。
     favor = (drives["attachment"] * 0.30
-             + drives["intimacy"] * 0.25
-             + drives["joy"] * 0.20
-             + (100 - drives["stress"]) * 0.15
-             + drives["social"] * 0.10)
+             + drives["intimacy"] * 0.22
+             + drives["joy"] * 0.14
+             + drives["curiosity"] * 0.10
+             + (100 - drives["stress"]) * 0.10
+             + drives["social"] * 0.14)
 
     thoughts = []
     for t in live_thoughts(st.get("thoughts")):

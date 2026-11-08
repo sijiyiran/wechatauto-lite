@@ -1,7 +1,7 @@
 {
-  "version": "1.4",
+  "version": "1.5",
   "edition": "portable",
-  "generated_at": "2026-11-08T21:36:57",
+  "generated_at": "2026-11-08T21:50:19",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -44,7 +44,7 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "e3dd5ca4c58a609a78c0c51b9062574fbc16d73d28c510cd09f95b0a847e29a3",
+      "sha256": "3282b41bd4645eed0e064193c16ac73b88a923886ebe46cc686609dbee36732d",
       "size": 127636
     },
     "install-keepalive.ps1": {
@@ -52,7 +52,7 @@
       "size": 4772
     },
     "installer.iss": {
-      "sha256": "ca2a3e88f5d599617c5b5229a307d3df5ad0fd8a02b345e374811285b9c855a4",
+      "sha256": "467fa73d792f81de9d578b58342325254f82494e4b366a2ebc809438ecc25114",
       "size": 6348
     },
     "keepalive.py": {
@@ -82,14 +82,6 @@
     "profiles.py": {
       "sha256": "38c7ecfd33be13ae1e511db855881f454873995830a143fa9577e05ca32e277f",
       "size": 12388
-    },
-    "prompts/persona.md": {
-      "sha256": "bd00332b5ddea72a966282af54a5d0f4379ee2537b2856405f2865cc4608357e",
-      "size": 21328
-    },
-    "prompts/simulation.md": {
-      "sha256": "43029e6605e2bf62fa8f476edd1d90a975c632e30b7e18b20d8b51ed64cba038",
-      "size": 6572
     },
     "relay.py": {
       "sha256": "97172f9ded8f3bb264d8406fcdf9966b8795c537aca8b64fbcbf836c80c50435",
@@ -500,8 +492,8 @@
       "size": 16763
     },
     "updater.py": {
-      "sha256": "61228e632903f8259ddb16ada49f07bbd4a6dbb8231a6c93e5000b4bb08eea6c",
-      "size": 16244
+      "sha256": "5c0204116678fac56d3b82e864e677e72734185867e003ff7858761facadf089",
+      "size": 16497
     }
   }
 }

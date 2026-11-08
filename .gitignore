@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.log
+state.json
+decisions.jsonl
+emotion.json
+vision-cache.json
+member-profiles.json
+style.json
+topics.json
+heartbeat.txt

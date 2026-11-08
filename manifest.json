@@ -1,0 +1,135 @@
+{
+  "version": "1.3",
+  "edition": "portable",
+  "generated_at": "2026-11-08T09:26:03",
+  "files": {
+    "START.cmd": {
+      "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
+      "size": 308
+    },
+    "app.ico": {
+      "sha256": "e4746265d1783f6abd1fb84deaedb2014f1fcff4359042273a819e387c2d0269",
+      "size": 123058
+    },
+    "brain.py": {
+      "sha256": "88adf418b9cf903cfd47732359be2b0c5ef62eed0acba809ae863740c763fae7",
+      "size": 349622
+    },
+    "bridge.py": {
+      "sha256": "9273009bdea4746d1b71f27b8e6fcff7ef4c35a8b834a44e125ce47ad0ddeaa6",
+      "size": 17313
+    },
+    "check-friends.cmd": {
+      "sha256": "11a9ec7ac6ce02e34276dd4dd67f24c8ff6d0d700ad3562cd02a51a3973537e8",
+      "size": 299
+    },
+    "dm.py": {
+      "sha256": "a9d5c0b7276a30eb9f2da159957de415c621305d88bd8eb4f88a8cb953a8fe4a",
+      "size": 11537
+    },
+    "emotion.py": {
+      "sha256": "6b6b1c5b62bf3319486d649cf8ccca2288cb63fc749f426513fa0fc18a53ac8d",
+      "size": 28602
+    },
+    "features.py": {
+      "sha256": "9b8686c8aa95b50c9d2cd0f2db264001a8d45bdefc1077eb34a394cebffb040c",
+      "size": 7944
+    },
+    "file_send.py": {
+      "sha256": "3fde566d93770a1ff1c765f5cc5653c7b156a671277b4ceb85cd3bebeaa1632c",
+      "size": 11750
+    },
+    "friend_requests.py": {
+      "sha256": "4d7bea77bb905384d9644fd3dbdcdcc54cf42797cae464fec74dd7d9b73a91ea",
+      "size": 19636
+    },
+    "gui.py": {
+      "sha256": "a2418e65b8525d87e0f01c60252ce3ca3680a710cf8b4b95d33d7821519da1c4",
+      "size": 110799
+    },
+    "install-keepalive.ps1": {
+      "sha256": "4105847609425b1b99ddaf00e93389bf36280a857b724cd3c75b51e912f2fffe",
+      "size": 4772
+    },
+    "keepalive.py": {
+      "sha256": "557108c7077ff4da65131cfd60252c288b9417bd00950d369cbfc23b7379082f",
+      "size": 10899
+    },
+    "memory.py": {
+      "sha256": "369eab272c2f021c769a27f85baea5479d07c9c1b0d23181b1957692667dcbe5",
+      "size": 29734
+    },
+    "moments.py": {
+      "sha256": "642b8df52641543933d9b685f92fee90b2ea72fcc9aa5f2ab623730f375537f0",
+      "size": 49330
+    },
+    "open-brain.cmd": {
+      "sha256": "0e6012c817cc9c506ffc439db776afc62e86d30399137174af0564dbe7a961d8",
+      "size": 1267
+    },
+    "proactive.py": {
+      "sha256": "c7143038530f6687bdc1117af66987ca70fda4c485d6ea0b80fd251d96593359",
+      "size": 8485
+    },
+    "profile_style.py": {
+      "sha256": "e75eba6fc5ae3e78e24e2fc229c4d3fce45a89fd5ba489d85d70464541d87bb9",
+      "size": 7923
+    },
+    "profiles.py": {
+      "sha256": "38c7ecfd33be13ae1e511db855881f454873995830a143fa9577e05ca32e277f",
+      "size": 12388
+    },
+    "prompts/persona.md": {
+      "sha256": "8f1a66ed7b0f547bae0bd47298cee369eb530e4089a72559e3aac647b0147ce3",
+      "size": 18482
+    },
+    "prompts/simulation.md": {
+      "sha256": "43029e6605e2bf62fa8f476edd1d90a975c632e30b7e18b20d8b51ed64cba038",
+      "size": 6572
+    },
+    "relay.py": {
+      "sha256": "97172f9ded8f3bb264d8406fcdf9966b8795c537aca8b64fbcbf836c80c50435",
+      "size": 16763
+    },
+    "run.cmd": {
+      "sha256": "ca23f1ba637e0314c92d10931cd3f92db45ec36d6b44f347458f5011ba9af69c",
+      "size": 1337
+    },
+    "selftest.py": {
+      "sha256": "bff7f87761d034922477d6d014b7c2c9c8134205900bf0b861702c9950c5ecb6",
+      "size": 38027
+    },
+    "selftest_e2e.py": {
+      "sha256": "fd3d509f9a16dbb4aa9ab32b1766c51691cf81e48c6b24bda54a6aa3984b0cf0",
+      "size": 2287
+    },
+    "start-daemon.cmd": {
+      "sha256": "1d6feda455838c3cfb4740e23c93b1c8b4fa9aa9295cf8f4becd07a8aa3b69f7",
+      "size": 229
+    },
+    "start-daemon.ps1": {
+      "sha256": "d1b2639474c034339e329a9b5cebf9c509fc4223a84176090810542cf38ad018",
+      "size": 5001
+    },
+    "start-gui.cmd": {
+      "sha256": "740dd48d2d6b98837109e8104b930d0f59c5646c5d50d057736d6011db799252",
+      "size": 1828
+    },
+    "stickers.json": {
+      "sha256": "3c4ac6bca4dce1ea87264234f6a2820349fb391e51d919898ac08c2d1311d00a",
+      "size": 1783
+    },
+    "stop-daemon.cmd": {
+      "sha256": "c7dc27ed6060cb4a22f342b67cd67f4a33ffe82ac1508a51466d199950dca954",
+      "size": 1433
+    },
+    "supervisor.py": {
+      "sha256": "28133bb223fefeb078b698dc26de5ab43c43b6f4a3ccd876b6f9b302c70d1c2e",
+      "size": 21207
+    },
+    "unbound_check.py": {
+      "sha256": "baa18b4081be27c1e233df09f3de24a7a5061959936033acdfdfe83c31e844e2",
+      "size": 16763
+    }
+  }
+}

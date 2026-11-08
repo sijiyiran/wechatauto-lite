@@ -1,0 +1,48 @@
+{
+  "s01": {
+    "file": "stickers/s01.png",
+    "desc": "白色恶魔娘尖叫",
+    "when": "",
+    "src": "C:\\Users\\pc\\.dsh\\attachments\\v1\\objects\\68\\68cfb9ec8cdb40a028222a3ecbf67cc9db5b028d7fb9245402d34dbb30e55f25",
+    "disabled": true,
+    "_why_disabled": "用户指定永久不发（2026-10-28）"
+  },
+  "s02": {
+    "file": "stickers/s02.png",
+    "desc": "deepsleep 鲸鱼标志（睡觉/下线）",
+    "when": "去睡觉、道晚安、说要下线了的时候",
+    "src": "C:\\Users\\pc\\.dsh\\attachments\\v1\\objects\\57\\57838b3e7a0a19dc60f7870318fc7285a1838eefd207dc7fd1f69f180e4cf04d"
+  },
+  "s03": {
+    "file": "stickers/s03.png",
+    "desc": "难道你是悲子吗",
+    "when": "",
+    "src": "C:\\Users\\pc\\.dsh\\attachments\\v1\\objects\\b2\\b2c88fb63f09c2d136c8bdb8f7ad5abec9036527623907bd488f2a789b2fe344",
+    "disabled": true,
+    "_why_disabled": "用户指定永久不发（2026-10-28）"
+  },
+  "s04": {
+    "file": "stickers/s04.gif",
+    "desc": "兔耳女孩抗议",
+    "when": "",
+    "src": "F:\\zhuomian\\iii\\1791171301773.gif",
+    "disabled": true,
+    "_why_disabled": "用户指定永久不发（2026-10-28）"
+  },
+  "s05": {
+    "file": "stickers/s05.gif",
+    "desc": "小鲸鱼本尊（得意/占上风的鲸鱼形象）",
+    "when": "自己说话占到便宜、怼赢了、占了上风、把对方噎住时",
+    "src": "F:\\zhuomian\\iii\\1791294332033.gif",
+    "min_interval_s": 1800,
+    "_freq": "用户要求：这张频率不能太高"
+  },
+  "s06": {
+    "file": "stickers/s06.gif",
+    "desc": "狐耳巫女",
+    "when": "",
+    "src": "F:\\zhuomian\\iii\\1791383603378.gif",
+    "disabled": true,
+    "_why_disabled": "用户指定永久不发（2026-10-28）"
+  }
+}

@@ -49,9 +49,12 @@ EXCLUDE_PREFIXES = (
 )
 EXCLUDE_PARTS = {"__pycache__", "node_modules", "dist", "build", ".git"}
 EXCLUDE_NAMES = {
+    # 私人文档，不公开
     "CONTINUITY.md", "HANDOVER.md", "这段对话.md",
     "letter_from_mama.md", "letter_from_mama_2.md",
     "给小鲸鱼的信.md", "给小鲸鱼的第二封信.md",
+    # 发布脚本，只开发机用，不该出现在更新源里
+    "publish.py", "sync_publish.py",
 }
 
 UA = "wechatauto-updater/1.1"

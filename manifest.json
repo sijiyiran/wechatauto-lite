@@ -1,7 +1,7 @@
 {
   "version": "1.4",
   "edition": "portable",
-  "generated_at": "2026-11-08T15:41:43",
+  "generated_at": "2026-11-08T21:36:57",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -84,8 +84,8 @@
       "size": 12388
     },
     "prompts/persona.md": {
-      "sha256": "816ab38a675518b5e4544486c960d6a7dbe9b6345e910bf9a4f25298610d821c",
-      "size": 20213
+      "sha256": "bd00332b5ddea72a966282af54a5d0f4379ee2537b2856405f2865cc4608357e",
+      "size": 21328
     },
     "prompts/simulation.md": {
       "sha256": "43029e6605e2bf62fa8f476edd1d90a975c632e30b7e18b20d8b51ed64cba038",

@@ -42,7 +42,10 @@ MANAGED_SUFFIXES = {
     ".py", ".md", ".iss", ".isl", ".ico", ".cmd", ".ps1", ".jpg",
 }
 MANAGED_NAMES = {"stickers.json"}
-MANAGED_DIRS = {"prompts", "splash_frames"}
+# **prompts/ 不在更新范围里** —— 用户定的规则（2026-11-08）：
+# 提示词（人格卡、模拟提示）是本地资产，改它不上传、也不该被更新覆盖。
+# splash_frames 是启动动画素材，属于程序资源，要更新。
+MANAGED_DIRS = {"splash_frames"}
 
 EXCLUDE_PREFIXES = (
     "_", "@", "dist/", "node_modules/", "__pycache__/", "build/",

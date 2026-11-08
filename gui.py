@@ -2425,7 +2425,7 @@ class Settings(tk.Toplevel):
 
         def work():
             try:
-                manifest = _UPD.fetch_manifest(res["manifest_url"])
+                manifest = _UPD.fetch_manifest(res["manifest_url"], res["repo"], res["tag"])
                 plan = _UPD.plan(ROOT, manifest, edition)
                 total = len(plan["to_download"])
                 self.after(0, lambda: self._upd_set(

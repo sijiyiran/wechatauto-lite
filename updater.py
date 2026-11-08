@@ -41,7 +41,10 @@ DEFAULT_REPOS = {
 MANAGED_SUFFIXES = {
     ".py", ".md", ".iss", ".isl", ".ico", ".cmd", ".ps1", ".jpg",
 }
-MANAGED_NAMES = {"stickers.json"}
+# **stickers.json 不在更新范围** —— 它是用户配置（在设置页里改用途/频率/禁用）。
+# 实测它的内容里有「用户指定永久不发」「这张频率不能太高」这类个人设置，
+# 被更新覆盖就全没了。表情包素材目录 stickers/ 本来就不受管。
+MANAGED_NAMES = set()
 # **prompts/ 不在更新范围里** —— 用户定的规则（2026-11-08）：
 # 提示词（人格卡、模拟提示）是本地资产，改它不上传、也不该被更新覆盖。
 # splash_frames 是启动动画素材，属于程序资源，要更新。

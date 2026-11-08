@@ -62,6 +62,94 @@ except Exception:
     pass
 
 # 鱼的心：九维情绪引擎（移植自 astrbot_plugin_fish_heart）
+# 红包 / 转账（涉及钱，默认关闭，见 config.payment）
+_PAYCARD = None
+_PAYCOLLECT = None
+try:
+    import paycard as _PAYCARD
+    import paycollect as _PAYCOLLECT
+except Exception:
+    _PAYCARD = None
+    _PAYCOLLECT = None
+
+
+# ─────────────────────────────────────────────────────────────
+# 修 wechatauto 的 OCR 假死（2026-11-05）
+#
+# ScreenOCR.recognize 用 asyncio.run(asyncio.wait_for(_run(), 8))，
+# 在 Windows + WinRT 上 wait_for 感知不到进度，每次都等满 8 秒然后超时返回 []
+# —— 实测全窗口 OCR 直接跑只要 0.23 秒，返回 0 条 vs 45 条。
+#
+# 这里换成「线程里 asyncio.run + 主线程 join 超时」：
+#   有超时保护，但不会把已经识别出来的结果丢掉。
+# ─────────────────────────────────────────────────────────────
+def _install_fast_ocr() -> None:
+    try:
+        from wechatauto import guia as _guia
+        from wechatauto.guia import ScreenOCR
+    except Exception:
+        return
+    if getattr(ScreenOCR, "_fast_patched", False):
+        return
+
+    @staticmethod
+    def _fast_recognize(image):
+        import asyncio as _aio
+        import os as _os
+        import tempfile as _tf
+        import threading as _thr
+
+        result = []
+
+        def _worker():
+            try:
+                from winsdk.windows.media.ocr import OcrEngine
+                from winsdk.windows.graphics.imaging import BitmapDecoder
+                from winsdk.windows.storage import StorageFile
+
+                async def _run():
+                    tmp = _os.path.join(_tf.gettempdir(), "wechatauto_ocr_tmp.png")
+                    image.save(tmp)
+                    f = await StorageFile.get_file_from_path_async(tmp)
+                    s = await f.open_async(0)
+                    dec = await BitmapDecoder.create_async(s)
+                    bmp = await dec.get_software_bitmap_async()
+                    eng = OcrEngine.try_create_from_user_profile_languages()
+                    if eng is None:
+                        return []
+                    res = await eng.recognize_async(bmp)
+                    out = []
+                    for line in res.lines:
+                        text = (line.text or "").replace(" ", "")
+                        if not text:
+                            continue
+                        r = line.words[0].bounding_rect
+                        out.append((text, int(r.x), int(r.y),
+                                    int(r.width), int(r.height)))
+                    return out
+
+                result.extend(_aio.run(_run()))
+            except Exception:
+                pass
+
+        th = _thr.Thread(target=_worker, daemon=True)
+        th.start()
+        th.join(6.0)          # 正常 ~0.25 秒，6 秒是保险
+        return result
+
+    ScreenOCR.recognize = _fast_recognize
+    ScreenOCR._fast_patched = True
+    try:
+        _guia.wxlog.debug("已启用快速 OCR（修 wait_for 假死）")
+    except Exception:
+        pass
+
+
+try:
+    _install_fast_ocr()
+except Exception:
+    pass
+
 _EMO = None
 try:
     import emotion as _EMO
@@ -2701,6 +2789,49 @@ class GroupBrain:
         except Exception:
             pass
 
+    def _emo_on_group_text(self, lines: list, uid: str = "") -> None:
+        """群聊版情绪感知：区分「对我说的」和「群友互相聊」。
+
+        为什么不复用 _emo_on_user_text：那个函数把整段文本当成"对方对我说的话"，
+        在私聊里成立，在群里会把群友对骂也算成她挨骂。
+        `latest` 每行自带前缀（点名你 / 群里），直接按前缀分流。
+        """
+        if _EMO is None:
+            return
+        try:
+            st = self._emo_state()
+            if not st:
+                return
+
+            addressed, lurking = [], []
+            for ln in (lines or []):
+                if not ln:
+                    continue
+                if str(ln).startswith("点名你"):
+                    addressed.append(str(ln))
+                else:
+                    lurking.append(str(ln))
+
+            # ① 对我说的：正常识别（群聊权重 0.7，比私聊轻）
+            for ln in addressed:
+                body = re.sub(r"^点名你\s*", "", ln)
+                for ev in _EMO.analyze_text(body, st):
+                    _EMO.apply_event(st, ev, weight=0.7, is_group=True)
+                # 被点名这件事本身给她一点正向反馈（被注意到）
+                _EMO.apply_event(st, "group_called", weight=0.6, is_group=True)
+            if addressed:
+                _EMO.consume_comfort(st, weight=0.7)
+
+            # ② 群友互相聊：只有旁观收益（好奇/社交），**不涨依恋/亲密**
+            if lurking:
+                w = min(1.0, 0.12 * len(lurking))
+                _EMO.apply_event(st, "group_lurked", weight=w, is_group=True)
+
+            # ③ 群聊不碰期待值 —— 群里没人理她很正常，不该积累"等待"
+            self._emo_save()
+        except Exception:
+            pass
+
     def _emo_channel_weight(self, is_group: bool) -> float:
         """渠道权重：私聊 1.0，群聊按「距上次私聊时长」衰减。
 
@@ -2726,6 +2857,92 @@ class GroupBrain:
         else:
             mult = 0.25
         return base * mult
+
+    # ─────────────────────────────────── 红包 / 转账 ──
+    def _try_collect_pay(self, rows: list, uid: str) -> None:
+        """扫一遍这批消息，看有没有给「我」的红包/转账。
+
+        **用户强调的规则**：收转账要看清楚是不是转给自己的，不然会报错。
+        判断在 paycard.is_for_me 里做（receiver_username 必须是我）。
+        这里再套一层配置限制（开关、金额、白名单）。
+        """
+        if _PAYCARD is None:
+            return
+        pcfg = self.cfg.get("payment") or {}
+        if not pcfg.get("enabled"):
+            return
+        import threading
+
+        my = (getattr(self, "my_wxid", "") or "").strip()
+        if not my:
+            return
+
+        seen = self.state.setdefault("pay_seen", [])
+        seen_set = set(str(x) for x in seen)
+        max_amt = float(pcfg.get("max_amount") or 0)
+        allow = [s.strip() for s in (pcfg.get("allow_senders") or []) if s.strip()]
+
+        for r in rows:
+            lid = r.get("local_id")
+            if lid is None:
+                continue
+            card = _PAYCARD.parse_card(r.get("content") or "")
+            if not card:
+                continue
+            ok, why = _PAYCARD.is_for_me(card, my)
+            if not ok:
+                continue
+            key = f"{uid}:{lid}"
+            if key in seen_set:
+                continue
+
+            kind_cn = "转账" if card["kind"] == "transfer" else "红包"
+            amt_txt = card.get("amount") or "?"
+
+            # 金额上限
+            if max_amt > 0:
+                try:
+                    val = float(str(amt_txt).replace("￥", "").replace("¥", "").strip() or 0)
+                except ValueError:
+                    val = 0.0
+                if val > max_amt:
+                    log(f"[收钱] 跳过{kind_cn} {amt_txt}（超过上限 {max_amt:g}）")
+                    seen.append(key)
+                    continue
+
+            # 白名单
+            if allow:
+                sender = self.speaker_of(r) if hasattr(self, "speaker_of") else ""
+                if not any(a in sender or a in (r.get("sender_username") or "")
+                           for a in allow):
+                    log(f"[收钱] 跳过{kind_cn}（发送者 {sender} 不在白名单）")
+                    seen.append(key)
+                    continue
+
+            log(f"[收钱] 发现给「我」的{kind_cn}：{amt_txt}"
+                f"（{card.get('title') or ''}）")
+            seen.append(key)
+
+            if not pcfg.get("auto_collect"):
+                log("[收钱] 自动领取未开启（payment.auto_collect=false），只记录")
+                continue
+
+            # 领取会切会话 + 点界面，放线程里跑，别卡住主判断
+            chat_name = self.nick(uid)
+            kind = card["kind"]
+            amt = str(card.get("amount") or "")
+            def _worker(cn=chat_name, k=kind, a=amt):
+                try:
+                    # gui 是方法不是属性；gui_locked 防止和发送抢界面
+                    with self.gui_locked("收钱"):
+                        okk, msg = _PAYCOLLECT.collect(
+                            self.gui(), cn, k, want_text=a)
+                    _r = "成功" if okk else "失败"
+                    log(f"[收钱] {cn} {k} 领取{_r}：{msg}")
+                except Exception as e:
+                    log(f"[收钱] 领取异常：{type(e).__name__}: {str(e)[:80]}")
+
+            threading.Thread(target=_worker, daemon=True).start()
 
     def _emo_injection(self, uid: str = "") -> str:
         """心境注入文本（跨档才返回，省 token）。"""
@@ -4194,6 +4411,11 @@ class GroupBrain:
                                     chat_lines, topics, others)
         # 记忆快照放在最前面 —— 模型先看到"我记得什么"，再判断这句怎么接。
         # 私聊的"可见人"就对方一个：只有涉及他的跨会话记忆才会带出来。
+        try:
+            self._try_collect_pay(rows, uid)
+        except Exception:
+            pass
+
         _memq = (theirs[-1].get("content") or "") if theirs else ""
         _memblobk = self._mem_snapshot(uid, _memq, [self.nick(uid)],
                                        self.nick(uid))
@@ -4526,6 +4748,12 @@ class GroupBrain:
             raise          # 余额/鉴权问题要往上抛，让上层统一冷却
         except Exception as e:
             log(f"[看图] 跳过（{type(e).__name__}: {str(e)[:80]}）")
+        # 红包/转账（有开关，默认关）
+        try:
+            self._try_collect_pay(rows, uid)
+        except Exception as e:
+            log(f"[收钱] 检测跳过（{type(e).__name__}: {str(e)[:60]}）")
+
         lines, members = [], []
         for r in rows:
             su = r.get("sender_username") or ""
@@ -4579,10 +4807,11 @@ class GroupBrain:
         # 传 members 进去 —— 别的群的事只有当事人在本群时才允许提。
         _memq = (latest[-1] if latest else "")
         mem_block = self._mem_snapshot(uid, _memq, members, self.nick(uid))
-        # **情绪感知**：群里这句话她是高兴还是被凶了
+        # **情绪感知（群聊版）**：只把「点名她」的话当情绪源，
+        # 群友互相聊只算旁观收益 —— 不然群里对骂也会让她委屈。
         try:
-            if _memq:
-                self._emo_on_user_text(_memq, uid)
+            if latest:
+                self._emo_on_group_text(latest, uid)
         except Exception:
             pass
         emo_block = self._emo_injection(uid)

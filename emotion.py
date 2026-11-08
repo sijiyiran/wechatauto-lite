@@ -184,6 +184,13 @@ EVENT_EFFECTS = {
     "comfort":      {"stress": -8.0, "joy": 5.0, "attachment": 2.0, "reflection": -5.0},
     "fake_comfort": {"blame": 10.0, "joy": -3.0, "stress": 4.0, "reflection": 2.0},
     "seeking":      {"attachment": 3.0, "intimacy": 3.0, "joy": 2.0},
+
+    # ── 群聊专属（私聊不会用到）──
+    # 群里潜水看戏：涨好奇和一点点社交，**不涨依恋**（看别人聊天不等于亲近我）
+    "group_lurked": {"curiosity": 1.2, "social": 0.4, "fatigue": 0.3},
+    # 群里被点名：被注意到本身是正向的，但量比私聊小
+    "group_called": {"attachment": 1.2, "joy": 1.5,
+                     "social": 0.8, "intimacy": 0.8},
 }
 
 EVENT_CN = {
@@ -192,6 +199,7 @@ EVENT_CN = {
     "goodnight": "晚安", "reply_fast": "及时回", "silent_6h": "沉默 6h",
     "silent_24h": "沉默 24h", "blame_mild": "责怪", "blame_mid": "责怪",
     "blame_hard": "重责", "fake_comfort": "敷衍",
+    "group_lurked": "旁观", "group_called": "被点名",
 }
 
 # ═════════════════════════════ 关键词表 ═════════════════════════════

@@ -54,7 +54,7 @@ EXCLUDE_NAMES = {
     "letter_from_mama.md", "letter_from_mama_2.md",
     "给小鲸鱼的信.md", "给小鲸鱼的第二封信.md",
     # 发布脚本，只开发机用，不该出现在更新源里
-    "publish.py", "sync_publish.py",
+    "publish.py", "sync_publish.py", "publish_api.py",
     # 仓库说明，不是程序文件，不该覆盖用户本地的
     "README.md",
 }

@@ -1278,6 +1278,182 @@ def match_person(post: dict, name: str) -> bool:
         return True
     return bool(who) and (name in who or who in name)
 
+
+
+# ══════════════════════ 唤起微信（托盘 / 最小化 / 未启动）══════════════════════
+def _find_wechat_exe() -> str:
+    """找 WeChat.exe 路径：先查注册表，再试常见安装位置。"""
+    import os
+    # ① 注册表（腾讯官方的 InstallPath）
+    try:
+        import winreg
+        for root, key in (
+            (winreg.HKEY_CURRENT_USER, r"Software\\Tencent\\WeChat"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\Tencent\\WeChat"),
+            (winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\\WOW6432Node\\Tencent\\WeChat"),
+        ):
+            try:
+                with winreg.OpenKey(root, key) as k:
+                    for name in ("InstallPath", "InstallPathW"):
+                        try:
+                            p = winreg.QueryValueEx(k, name)[0]
+                            exe = os.path.join(p, "WeChat.exe")
+                            if os.path.isfile(exe):
+                                return exe
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # ② 从**正在运行的微信进程**反查 exe 路径（最可靠）
+    try:
+        import win32gui
+        import win32process
+
+        def cb(h, _):
+            try:
+                cls = win32gui.GetClassName(h) or ""
+                if cls == "WeChatMainWndForPC" or cls.startswith("Qt"):
+                    _, pid = win32process.GetWindowThreadProcessId(h)
+                    cb.pids.add(pid)
+            except Exception:
+                pass
+
+        cb.pids = set()
+        win32gui.EnumWindows(cb, None)
+        for pid in list(cb.pids):
+            try:
+                import win32api
+                import win32con
+                hproc = win32api.OpenProcess(
+                    win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ,
+                    False, pid)
+                try:
+                    exe = win32process.GetModuleFileNameEx(hproc, 0)
+                finally:
+                    try:
+                        win32api.CloseHandle(hproc)
+                    except Exception:
+                        pass
+                if exe and exe.lower().endswith(".exe") and os.path.isfile(exe):
+                    return exe
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # ③ 常见路径
+    for p in (
+        r"C:\Program Files\\Tencent\\WeChat\\WeChat.exe",
+        r"C:\Program Files (x86)\\Tencent\\WeChat\\WeChat.exe",
+        r"C:\Program Files\\Tencent\\Weixin\\Weixin.exe",
+        r"C:\Program Files (x86)\\Tencent\\Weixin\\Weixin.exe",
+    ):
+        try:
+            if os.path.isfile(p):
+                return p
+        except Exception:
+            pass
+    return ""
+
+
+def wake_wechat(timeout: float = 6.0) -> tuple:
+    """唤起微信窗口。返回 (ok, 说明)。
+
+    覆盖三种情况：
+      · 在托盘里（窗口隐藏）  -> ShowWindow(SW_SHOW)
+      · 最小化了              -> SW_RESTORE
+      · 根本没启动            -> 启动 WeChat.exe 并等它出现
+    """
+    try:
+        import win32gui
+        import win32con
+        import time as _t
+    except Exception:
+        return False, "缺少 win32gui，无法唤起微信"
+
+    def _collect() -> list:
+        """枚举所有窗口（**不看可见性**），挑出微信主窗口候选。"""
+        hits = []
+
+        def cb(h, _):
+            try:
+                cls = win32gui.GetClassName(h) or ""
+                title = win32gui.GetWindowText(h) or ""
+                # 微信主窗口：新版本是 Qt 类、标题含"微信"；
+                # 旧版本是 WeChatMainWndForPC。也可能是 '微信' 标题的隐藏窗口。
+                is_main = (cls == "WeChatMainWndForPC"
+                           or (cls.startswith("Qt") and "微信" in title)
+                           or (cls.startswith("Qt") and not title))
+                if not is_main:
+                    return
+                l, t, r, b = win32gui.GetWindowRect(h)
+                w, hh = r - l, b - t
+                if w < 400 or hh < 300:
+                    return          # 太小的多半是通知/小窗，不要
+                hits.append((h, cls, title))
+            except Exception:
+                pass
+
+        try:
+            win32gui.EnumWindows(cb, None)
+        except Exception:
+            pass
+        return hits
+
+    def _show(h) -> bool:
+        try:
+            if win32gui.IsIconic(h):
+                win32gui.ShowWindow(h, win32con.SW_RESTORE)
+            elif not win32gui.IsWindowVisible(h):
+                win32gui.ShowWindow(h, win32con.SW_SHOW)
+            else:
+                win32gui.ShowWindow(h, win32con.SW_SHOW)
+            _t.sleep(0.4)
+            try:
+                win32gui.SetForegroundWindow(h)
+            except Exception:
+                # 前台窗口抢占失败时退一步：先最小化再还原
+                try:
+                    win32gui.ShowWindow(h, win32con.SW_MINIMIZE)
+                    _t.sleep(0.2)
+                    win32gui.ShowWindow(h, win32con.SW_RESTORE)
+                except Exception:
+                    pass
+            _t.sleep(0.4)
+            return bool(win32gui.IsWindowVisible(h))
+        except Exception:
+            return False
+
+    # ① 窗口存在（可能隐藏）
+    hits = _collect()
+    for h, cls, title in hits:
+        if _show(h):
+            return True, "已唤起微信（原状态：{}）".format(
+                "隐藏/托盘" if not win32gui.IsWindowVisible(h) else "可见")
+
+    # ② 没窗口 -> 微信没启动，拉起它
+    exe = _find_wechat_exe()
+    if not exe:
+        return False, "微信没启动，也找不到 WeChat.exe 路径"
+    try:
+        import subprocess
+        subprocess.Popen([exe])
+    except Exception as e:
+        return False, "启动微信失败：{}".format(e)
+
+    # 等窗口出现
+    deadline = _t.time() + max(3.0, float(timeout))
+    while _t.time() < deadline:
+        _t.sleep(0.8)
+        for h, cls, title in _collect():
+            if _show(h):
+                return True, "微信未运行，已启动并唤起"
+    return False, "启动了微信但等不到窗口（可能还在登录/启动中）"
+
+
 def ensure_wechat_on_screen() -> tuple:
     """确保微信主窗口**在屏幕内、可见、没被最小化**。返回 (ok, 说明)。
 
@@ -1320,7 +1496,18 @@ def ensure_wechat_on_screen() -> tuple:
         return True, "枚举窗口失败"
 
     if not hits:
-        return False, "找不到微信窗口（可能被关到托盘了）"
+        # **先试着唤起**（托盘 / 最小化 / 没启动）——用户要求自动拉起。
+        try:
+            _ok, _why = wake_wechat()
+            if _ok:
+                hits.clear()
+                win32gui.EnumWindows(cb, None)
+                if not hits:
+                    return False, "{}，但重新枚举仍没窗口".format(_why)
+            else:
+                return False, _why
+        except Exception as _e:
+            return False, "找不到微信窗口且唤起失败：{}".format(_e)
 
     hwnd = hits[0]
     try:

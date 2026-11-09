@@ -3864,12 +3864,29 @@ class GroupBrain:
                             _rect = (_r.left, _r.top, _r.right, _r.bottom)
                 except Exception:
                     _rect = None
+                # **预热小滑一段**：切到朋友圈时列表常常还没渲染，
+                # 用户反馈"有时候看不到按钮"。先滑一下再判断。
+                try:
+                    _warm = int(m.get("warmup_scroll", 240))
+                    if _warm > 0:
+                        MO.warmup_scroll(rect=_rect,
+                                         step=_warm,
+                                         allow_fallback=True)
+                        log("[朋友圈] 预热小滑 {} 完成".format(_warm))
+                        if _rect is None:
+                            _rect = MO.find_list_rect(allow_fallback=True)
+                except Exception as _e:
+                    log("[朋友圈] 预热跳过：{}".format(type(_e).__name__))
+
                 _seen_now = set(st.get("seen") or [])
                 posts, _hit_seen = MO.scroll_until_seen(
                     lambda: MO.read_posts(mdb, limit=_rl),
                     _seen_now,
                     max_rounds=int(m.get("scroll_load_rounds", 12)),
-                    list_rect=_rect)
+                    per_round=int(m.get("scroll_per_round", 3)),
+                    list_rect=_rect,
+                    allow_fallback=bool(m.get("scroll_fallback", True)),
+                    step=int(m.get("scroll_step", 600)))
                 log(f"[朋友圈] 往下滑，碰到看过的就停：新动态 {len(posts)} 条"
                     f"（{'碰到边界' if _hit_seen else '到底/到上限'}）")
                 # **收集完必须滚回顶部！**
@@ -3878,7 +3895,7 @@ class GroupBrain:
                 # "界面上找不到这条" —— 明明刚看到过。
                 # 互动必须从顶部开始，因为 UIA 只认识渲染出来的条目。
                 try:
-                    MO.scroll_to_top(times=25)
+                    MO.scroll_to_top(times=25, allow_fallback=True)
                     time.sleep(1.2)
                     log("[朋友圈] 收集完已滚回顶部，准备互动")
                 except Exception:
@@ -4055,20 +4072,27 @@ class GroupBrain:
             except Exception:
                 item_now = MO.find_item(ui_items, post)
 
-            # 还找不到？可能是页面又漂了 —— 滚回顶部再试一次
+            # 还找不到？**往下滑固定路程再找**（用户 2026-11-09 要求）。
+            # 朋友圈是虚拟滚动：滚回顶部只渲染最新 1~2 条，
+            # 屏幕下方的条目不在 UI 树里 —— 所以原来"滚回顶部再试一次"
+            # 对它们完全无效（日志里连续三条"界面上找不到这条"）。
             if item_now is None:
                 try:
-                    MO.scroll_to_top(times=25)
-                    time.sleep(1.2)
-                    from wechatauto import Moment as _M3, WeChat as _W3
-                    _mo3 = _M3(_W3())
-                    _items3 = _mo3.GetMoments() or []
-                    item_now = MO.find_item(_items3, post)
+                    _rounds = int(m.get("interact_scroll_rounds", 10))
+                    _step = int(m.get("interact_scroll_step", 600))
+                    item_now, _mo3 = MO.scroll_until_item(
+                        mo, post,
+                        max_rounds=_rounds,
+                        step=_step,
+                        list_rect=_rect,
+                        allow_fallback=True)
                     if item_now is not None:
                         mo = _mo3
-                        log("[朋友圈] 滚回顶部后找到了这条")
-                except Exception:
-                    pass
+                        log("[朋友圈] 往下滑找到了这条")
+                    else:
+                        log("[朋友圈] 滑了 {} 段还是没找到".format(_rounds))
+                except Exception as _e:
+                    log("[朋友圈] 滑动查找失败：{}".format(type(_e).__name__))
 
             t0 = time.time()
             if item_now is not None:

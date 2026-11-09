@@ -42,7 +42,7 @@ try:
 except Exception:
     _UPD = None
 
-VERSION = "1.6"
+VERSION = "1.9"
 
 # ─────────────────────────────────────────────────────────────── 色板 ──
 # 取自 awesome-design-md / linear.app DESIGN.md，按桌面小窗微调过对比度。
@@ -556,9 +556,21 @@ def run_script(name: str) -> tuple[bool, str]:
 
 # ────────────────────────────────────────────────────────────── 主面板 ──
 class App(tk.Tk):
-    def __init__(self, skip_start_check: bool = False):
+    def __init__(self, skip_start_check: bool = False,
+                 defer_anim: bool = False):
         super().__init__()
+        # **立刻藏起来。** Tk 窗口创建后默认可见，而 _build_ui() 要 1~2 秒，
+        # 不藏的话用户会先看到一个空的主窗口，再看到启动动画，最后又一次主窗口。
+        self.withdraw()
         self._skip_start_check = skip_start_check
+        # defer_anim=True 时不在构造阶段排开场动画 ——
+        # 否则窗口会在启动动画之前先闪一下（fade_window 的 after 回调拦不住）。
+        self._defer_anim = defer_anim
+        # **启动动画期间主窗口必须保持隐藏。**
+        # 踩过（2026-11-08）：_ensure_on_screen 会在 after(300) 时判定
+        # "窗口不在屏幕内" -> deiconify()，把 withdraw 的主窗口又拉出来，
+        # 于是启动时先闪一下 GUI、再出动画窗口、最后又出 GUI。
+        self._splash_active = defer_anim
         # 先读配置 —— 下面 edition_info / 标题 / 外观都要用它
         self.cfg = load_cfg()
         _ed_txt, _ed_color, _ed_note = edition_info(self.cfg)
@@ -597,8 +609,11 @@ class App(tk.Tk):
         self._closing = False
         # 开场动效：窗口淡入；卡片边框按顺序亮一下，把视线引到总开关。
         # 只在开场做一次，属于"有目的的引导"，不是常驻装饰。
-        fade_window(self, 340)
-        self.after(140, self._entrance)
+        if not getattr(self, "_defer_anim", False):
+            # 不走启动动画时，构建完就显示（并播开场动效）
+            self.deiconify()
+            fade_window(self, 340)
+            self.after(140, self._entrance)
         # 总开关状态灯开始呼吸（常驻但极克制，2.4s 一个周期）
         self._breathe_switch()
         self._render_switch()      # 启动时立刻按配置显示，别用硬编码的初值
@@ -685,6 +700,12 @@ class App(tk.Tk):
         用户看到的是"面板不见了"，但进程好好活着 —— 很容易误判成崩溃。
         """
         try:
+            # **启动动画还在的时候别碰窗口。**
+            # 此时主窗口是 withdraw 的，坐标/尺寸都不可信，
+            # 下面的"不在屏幕内就 deiconify"会把它提前拉出来。
+            if getattr(self, "_splash_active", False):
+                self.after(300, self._ensure_on_screen)
+                return
             if self.state() == "iconic":
                 self.deiconify()
             self.update_idletasks()
@@ -2787,16 +2808,20 @@ class Settings(tk.Toplevel):
 
 def main():
     """启动流程：先显示开启动画（检查更新 + 资源完整性），完成后进主界面。"""
-    app = App(skip_start_check=True)
+    app = App(skip_start_check=True, defer_anim=True)
     app.withdraw()
 
     try:
         import splash as _SPLASH
+
         def _on_splash_done():
             try:
+                # 先放开标志，再显示主窗口，最后补一次屏幕检查
+                app._splash_active = False
                 app.deiconify()
-                # 主窗口淡入
                 fade_window(app, 300)
+                app.after(140, app._entrance)
+                app.after(200, app._ensure_on_screen)
             except Exception:
                 pass
 

@@ -1023,7 +1023,8 @@ def click_refresh(gui=None) -> bool:
     except Exception:
         return False
 
-def scroll_to_top(times: int = 20, list_rect=None) -> None:
+def scroll_to_top(times: int = 20, list_rect=None,
+                  allow_fallback: bool = False) -> None:
     """把**朋友圈列表**滚到最顶部，让最新动态渲染出来。
 
     **必须滚**：朋友圈是虚拟滚动，没渲染出来的条目在 UIA 树里
@@ -1050,37 +1051,17 @@ def scroll_to_top(times: int = 20, list_rect=None) -> None:
         except Exception:
             cx = cy = None
     if cx is None:
-        # 自己找朋友圈列表控件
-        try:
-            from wechatauto import WeChatGUI
-            win = getattr(WeChatGUI()._get_uia(), "_win", None)
-            found = []
-
-            def walk(c, d=0):
-                if d > 24 or found:
-                    return
-                try:
-                    for ch in c.GetChildren():
-                        try:
-                            if "TimeLineListView" in (ch.ClassName or ""):
-                                found.append(ch)
-                                return
-                        except Exception:
-                            pass
-                        walk(ch, d + 1)
-                except Exception:
-                    pass
-
-            walk(win)
-            if found:
-                r = found[0].BoundingRectangle
-                if r.right - r.left > 200 and r.bottom - r.top > 200:
-                    cx = int((r.left + r.right) / 2)
-                    cy = int((r.top + r.bottom) / 2)
-        except Exception:
-            cx = cy = None
+        _r = find_list_rect(allow_fallback=allow_fallback)
+        if _r:
+            cx = int((_r[0] + _r[2]) / 2)
+            cy = int((_r[1] + _r[3]) / 2)
     if cx is None:
-        # 找不到朋友圈列表 -> **不滚**，别乱动别人的窗口
+        r = find_list_rect(allow_fallback=allow_fallback)
+        if r:
+            cx = int((r[0] + r[2]) / 2)
+            cy = int((r[1] + r[3]) / 2)
+    if cx is None:
+        # 找不到朋友圈列表且不允许兜底 -> **不滚**，别乱动别人的窗口
         return
     try:
         pyautogui.FAILSAFE = False
@@ -1092,6 +1073,167 @@ def scroll_to_top(times: int = 20, list_rect=None) -> None:
         _t.sleep(1.0)
     except Exception:
         pass
+
+
+
+# ══════════════════════ 朋友圈列表矩形（带兜底）══════════════════════
+def _fallback_rect() -> tuple | None:
+    """找不到 TimeLineListView 时的兜底：用微信窗口右侧区域。
+
+    **只有调用方确认"当前停在朋友圈页"时才该用** ——
+    否则滚的就是聊天窗口，会骚扰用户（2026-10-19 踩过）。
+
+    微信布局：左侧会话列表约 22%，右侧是内容区。
+    朋友圈列表占右侧内容区，去掉顶部标题栏和底部输入区。
+    """
+    try:
+        from wechatauto import WeChatGUI
+        gui = WeChatGUI()
+        l = int(getattr(gui, "origin_x", 0) or 0)
+        t = int(getattr(gui, "origin_y", 0) or 0)
+        w = int(getattr(gui, "render_w", 0) or 0)
+        h = int(getattr(gui, "render_h", 0) or 0)
+        if w < 400 or h < 300:
+            return None
+        x0 = l + int(w * 0.24)
+        y0 = t + int(h * 0.10)
+        x1 = l + w - 30
+        y1 = t + h - 90
+        if x1 - x0 < 200 or y1 - y0 < 200:
+            return None
+        return (x0, y0, x1, y1)
+    except Exception:
+        return None
+
+
+def find_list_rect(allow_fallback: bool = False) -> tuple | None:
+    """找朋友圈列表的屏幕矩形。找不到且 allow_fallback 时用窗口区域兜底。"""
+    try:
+        from wechatauto import WeChatGUI
+        win = getattr(WeChatGUI()._get_uia(), "_win", None)
+        found = []
+
+        def walk(c, d=0):
+            if d > 24 or found:
+                return
+            try:
+                for ch in c.GetChildren():
+                    try:
+                        if "TimeLineListView" in (ch.ClassName or ""):
+                            found.append(ch)
+                            return
+                    except Exception:
+                        pass
+                    walk(ch, d + 1)
+            except Exception:
+                pass
+
+        walk(win)
+        if found:
+            r = found[0].BoundingRectangle
+            if r.right - r.left > 200 and r.bottom - r.top > 200:
+                return (int(r.left), int(r.top), int(r.right), int(r.bottom))
+    except Exception:
+        pass
+    return _fallback_rect() if allow_fallback else None
+
+
+def warmup_scroll(rect=None, step: int = 240, allow_fallback: bool = True) -> None:
+    """打开朋友圈后先小滑一段，让列表渲染稳定。
+
+    用户反馈（2026-11-09）："切到朋友圈界面时有时候会看不到按钮"。
+    原因是虚拟滚动列表刚切过来时还没渲染完，控件矩形是 (0,0,0,0)。
+    先下滑一小段再判断，能逼它渲染。
+    """
+    try:
+        import pyautogui
+        import time as _t
+    except Exception:
+        return
+    r = rect or find_list_rect(allow_fallback=allow_fallback)
+    if not r:
+        return
+    try:
+        cx = int((r[0] + r[2]) / 2)
+        cy = int((r[1] + r[3]) / 2)
+        pyautogui.FAILSAFE = False
+        pyautogui.moveTo(cx, cy, duration=0.15)
+        _t.sleep(0.15)
+        pyautogui.scroll(-int(step))
+        _t.sleep(0.6)
+        # 滑完回顶，保证后面从最新一条开始
+        for _ in range(max(3, int(step / 100))):
+            pyautogui.scroll(400)
+            _t.sleep(0.05)
+        _t.sleep(0.5)
+    except Exception:
+        pass
+
+
+
+
+# ══════════════════════ 向下滑固定路程 / 滑到目标条目 ══════════════════════
+def scroll_down(step: int = 600, list_rect=None,
+                allow_fallback: bool = True) -> bool:
+    """在朋友圈列表里向下滚一段。返回是否真的滚了。"""
+    try:
+        import pyautogui
+        import time as _t
+    except Exception:
+        return False
+    r = list_rect or find_list_rect(allow_fallback=allow_fallback)
+    if not r:
+        return False
+    try:
+        cx = int((r[0] + r[2]) / 2)
+        cy = int((r[1] + r[3]) / 2)
+        pyautogui.FAILSAFE = False
+        pyautogui.moveTo(cx, cy, duration=0.15)
+        _t.sleep(0.1)
+        pyautogui.scroll(-int(step))       # 负数 = 向下
+        return True
+    except Exception:
+        return False
+
+
+def scroll_until_item(mo, post, max_rounds: int = 10, step: int = 600,
+                      list_rect=None, allow_fallback: bool = True,
+                      settle: float = 0.8) -> tuple:
+    """往下滑，直到界面渲染出目标动态。
+
+    用户要求（2026-11-09）：
+      · 每次向下滑动**固定路程**
+      · 滑动后再找 / 再回复
+      · 切过来时看不到按钮 -> 先滑一小段再判断
+
+    返回 (item, mo)。找不到返回 (None, mo)。
+    注意：**不自动回顶** —— 由调用方决定起点。按时间倒序（最新在上），
+    从顶部开始逐条往下找，方向是一致的。
+    """
+    import time as _t
+    items = []
+    for i in range(max(1, int(max_rounds))):
+        try:
+            items = mo.GetMoments() or []
+        except Exception:
+            items = []
+        it = find_item(items, post)
+        if it is not None:
+            if i:
+                try:
+                    import logging as _lg
+                    _lg.getLogger("brain").info(
+                        "[朋友圈] 滑了 %d 段找到了目标条目", i)
+                except Exception:
+                    pass
+            return it, mo
+        # 没找到 -> 往下滑一段再试
+        if not scroll_down(step=step, list_rect=list_rect,
+                           allow_fallback=allow_fallback):
+            break
+        _t.sleep(settle)
+    return None, mo
+
 
 def parse_target_person(text: str) -> str:
     """从「去看看XX的朋友圈」里提取 XX。提不出来返回空串。
@@ -1210,7 +1352,9 @@ def ensure_wechat_on_screen() -> tuple:
         return True, "读窗口位置失败：{}".format(type(e).__name__)
 
 def scroll_until_seen(read_fn, seen_ids, max_rounds: int = 12,
-                      per_round: int = 3, list_rect=None) -> tuple:
+                      per_round: int = 3, list_rect=None,
+                      allow_fallback: bool = False,
+                      step: int = 600) -> tuple:
     """**往下滑，一路收集新动态，滑到"以前看过的那条"就停。**
 
     用户要求（2026-10-19）："往刷朋友圈下滑直到滑到她以前看到过的，
@@ -1252,27 +1396,36 @@ def scroll_until_seen(read_fn, seen_ids, max_rounds: int = 12,
     stopped = False
 
     def _absorb():
-        """读一次库，把没见过的收进来。返回是否碰到了见过的边界。"""
+        """读一次库。返回 (本轮新增几条, 是否碰到过见过的边界)。
+
+        注意：`read_fn` 是从**数据库**读固定条数（limit=40），跟界面滑到哪无关。
+        所以第一次读到的内容里本来就会混着 seen 的旧动态 ——
+        **不能因为碰到 seen 就收工**，否则一次都不滑。
+        """
         got = read_fn() or []
         got.sort(key=lambda x: int(x.get("create_time") or 0), reverse=True)
         hit_seen = False
+        added = 0
         for post in got:
             pid = _post_id(post)
             if not pid or pid in all_ids:
                 continue
             all_ids.add(pid)
             if pid in seen_ids:
-                # **碰到边界了**：这条以前看过
+                # 碰到边界了：这条以前看过，后面的更旧，一律不要
                 hit_seen = True
                 continue
             if hit_seen:
-                # 边界之后的一律不要
                 continue
             out.append(post)
-        return hit_seen
+            added += 1
+        return added, hit_seen
 
-    if _absorb():
-        return out, True
+    # 第一次读库：只收集，**不因为碰到 seen 就返回**
+    _added, _hit = _absorb()
+    if _added == 0:
+        # 一条新的都没有 —— 真的没东西可看
+        return out, _hit
 
     for _ in range(max_rounds):
         if cx is None:
@@ -1281,13 +1434,16 @@ def scroll_until_seen(read_fn, seen_ids, max_rounds: int = 12,
             pyautogui.FAILSAFE = False
             pyautogui.moveTo(cx, cy, duration=0.15)
             for _ in range(per_round):
-                pyautogui.scroll(-600)      # 负数 = 往下
+                pyautogui.scroll(-int(step))      # 负数 = 往下
                 _t.sleep(0.18)
             _t.sleep(1.2)
         except Exception:
             break
-        if _absorb():
-            stopped = True
-            break
+        _added, _hit = _absorb()
+        if _added > 0:
+            continue          # 还滑出了新东西，继续
+        # 本轮没有任何新增 -> 滑不动了（到底 / 到边界）
+        stopped = bool(_hit)
+        break
 
     return out, stopped

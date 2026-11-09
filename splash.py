@@ -55,6 +55,11 @@ class SplashScreen(tk.Toplevel):
 
     def __init__(self, master, checker=None):
         super().__init__(master)
+        # 给个标题：无边框窗口在任务栏上没名字，调试和识别都不方便
+        try:
+            self.title("正在启动…")
+        except Exception:
+            pass
         self.withdraw()
         self.overrideredirect(True)
         try:

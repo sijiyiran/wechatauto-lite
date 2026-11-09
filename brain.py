@@ -2886,6 +2886,14 @@ class GroupBrain:
             lid = r.get("local_id")
             if lid is None:
                 continue
+            # **我自己发的消息一律不处理**（sender_id == 2 是本机账号）。
+            # 用它的微信给别人转钱时，那条卡片的 sender_id 就是 2 ——
+            # 不排除的话会被当成"别人转给我的"（用户 2026-11-09 反馈）。
+            try:
+                if int(r.get("sender_id") or 0) == 2:
+                    continue
+            except Exception:
+                pass
             card = _PAYCARD.parse_card(r.get("content") or "")
             if not card:
                 continue
@@ -2921,17 +2929,21 @@ class GroupBrain:
 
             log(f"[收钱] 发现给「我」的{kind_cn}：{amt_txt}"
                 f"（{card.get('title') or ''}）")
-            seen.append(key)
 
             if not pcfg.get("auto_collect"):
                 log("[收钱] 自动领取未开启（payment.auto_collect=false），只记录")
+                seen.append(key)
                 continue
 
             # 领取会切会话 + 点界面，放线程里跑，别卡住主判断
             chat_name = self.nick(uid)
             kind = card["kind"]
             amt = str(card.get("amount") or "")
-            def _worker(cn=chat_name, k=kind, a=amt):
+
+            # **seen 只在成功后记录**（2026-11-09 修复）。
+            # 原来发现时就写 seen，领取失败也不回滚 —— 那笔钱就永远不再处理了。
+            def _worker(cn=chat_name, k=kind, a=amt, key=key):
+                okk = False
                 try:
                     # gui 是方法不是属性；gui_locked 防止和发送抢界面
                     with self.gui_locked("收钱"):
@@ -2941,6 +2953,37 @@ class GroupBrain:
                     log(f"[收钱] {cn} {k} 领取{_r}：{msg}")
                 except Exception as e:
                     log(f"[收钱] 领取异常：{type(e).__name__}: {str(e)[:80]}")
+                    okk = False
+
+                try:
+                    seen_now = self.state.setdefault("pay_seen", [])
+                    if okk:
+                        if key not in seen_now:
+                            seen_now.append(key)
+                        # 成功 -> 清掉重试计数
+                        try:
+                            self.state.get("pay_retry", {}).pop(key, None)
+                        except Exception:
+                            pass
+                    else:
+                        # 失败 -> 不记 seen，累加重试次数；超 3 次放弃
+                        retry = self.state.setdefault("pay_retry", {})
+                        cnt = int(retry.get(key, 0)) + 1
+                        retry[key] = cnt
+                        if cnt >= 3:
+                            log(f"[收钱] 重试 {cnt} 次仍失败，放弃这笔（{key}）")
+                            if key not in seen_now:
+                                seen_now.append(key)
+                            try:
+                                retry.pop(key, None)
+                            except Exception:
+                                pass
+                        else:
+                            log(f"[收钱] 第 {cnt} 次失败，下次还会再试")
+                    self.state["pay_seen"] = seen_now[-300:]
+                    save_state(self.state)
+                except Exception:
+                    pass
 
             threading.Thread(target=_worker, daemon=True).start()
 
@@ -3793,6 +3836,15 @@ class GroupBrain:
         try:
             # 先确认窗口真的在屏幕内 —— 不然打开"成功"但什么都看不到
             _ok_vis, _why_vis = MO.ensure_wechat_on_screen()
+            if not _ok_vis:
+                # 先自动唤起一次（托盘/最小化/未启动），再重新检查
+                try:
+                    _woke, _wmsg = MO.wake_wechat()
+                    log(f"[朋友圈] 自动唤起微信：{_wmsg}")
+                    if _woke:
+                        _ok_vis, _why_vis = MO.ensure_wechat_on_screen()
+                except Exception as _e:
+                    log("[朋友圈] 唤起异常：{}".format(type(_e).__name__))
             if not _ok_vis:
                 log(f"[朋友圈] ❌ 微信窗口不可用：{_why_vis}")
                 log("   先不看了，免得把'看不到'误判成'没有新动态'。")

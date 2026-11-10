@@ -2183,11 +2183,25 @@ def sanitize(reply: str, persona: dict) -> str:
     """
     limit = int(persona.get("max_chars", 60))
     lines = [x for x in (reply or "").replace("\r", "").split("\n")]
+
+    # **命中脏话先换词，不要整条丢**（用户 2026-11-09 要求）。
+    # 换完还命中 / 换空了，才整条丢弃兜底。
+    fixed_lines = []
     for x in lines:
         hit = family_insult_hit(x)
         if hit:
-            log(f"🚫 整条拦下（命中家属向脏话「{hit}」）：{x.strip()[:60]!r}")
-            return ""
+            soft = soften_insult(x)
+            still = family_insult_hit(soft)
+            if soft.strip() and not still:
+                log(f"🩹 脏话已换说法（「{hit}」）：{soft.strip()[:60]!r}")
+                fixed_lines.append(soft)
+            else:
+                log(f"🚫 整条拦下（命中家属向脏话「{hit}」，换词后仍命中）：{x.strip()[:60]!r}")
+                return ""
+        else:
+            fixed_lines.append(x)
+    lines = fixed_lines
+
     out = [_sanitize_one(x, persona, limit) for x in lines]
     out = [x for x in out if x]
     return "\n".join(out)
@@ -2212,6 +2226,42 @@ FAMILY_INSULT = [
     "孤儿", "野种", "全家", "祖宗", "绝后", "断子绝孙",
     "结婚证生的", "是亲生的吗",
 ]
+
+
+
+# ── 脏话的温和替身：命中后先换词，别整条丢弃 ────────────────────────
+#
+# 用户要求（2026-11-09）："说话中含有脏字会被拦截，但拦截后就不会说了"
+# —— 一句话里有个脏字，整条就消失了，群里看着像她突然不理人。
+# 所以先按这张表换成温和说法：保留"在反击"的语气，去掉人身攻击。
+#
+# 注意顺序：**长的放前面**，避免"你妈"先把"操你妈"拆得只剩"操"。
+SOFTEN_MAP = [
+    # **长词优先**：否则"你妈"会先把"操你妈"拆成"操你"，剩下个"操"更难看
+    ("操你妈", "去你的"), ("草你妈", "去你的"), ("日你妈", "去你的"),
+    ("你妈死了", "离谱"),
+    ("你他妈", "你"), ("你妈的", "你"),
+    ("你全家长得都这样", "你们长得都这样"),
+    ("没有父母", "没这回事"), ("没父母", "没这回事"),
+    ("没有妈", "没这回事"), ("没妈", "没这回事"),
+    ("死妈", "离谱"),
+    ("你父母", "你家长"), ("你爹", "你"), ("你爸", "你"),
+    ("你娘", "你"), ("你妈", "你"),
+    # 其它家属向
+    ("孤儿", "独狼"), ("野种", "野路子"),
+    ("全家", "大家"), ("祖宗", "老古董"),
+    ("断子绝孙", "没下文"), ("绝后", "没下文"),
+    ("结婚证生的", "来路不明"), ("是亲生的吗", "是真的吗"),
+]
+
+
+def soften_insult(text: str) -> str:
+    """把回复里的家属向脏话换成温和说法。返回替换后的文本。"""
+    s = text or ""
+    for bad, good in SOFTEN_MAP:
+        if bad in s:
+            s = s.replace(bad, good)
+    return s
 
 
 def family_insult_hit(text: str) -> str:
@@ -2859,6 +2909,50 @@ class GroupBrain:
         return base * mult
 
     # ─────────────────────────────────── 红包 / 转账 ──
+    def _handle_llm_blocked(self, e, uid: str = "", notify: bool = False) -> float:
+        """统一处理 LLMBlocked（余额不足 / 鉴权失败），返回等了多少秒。
+
+        私聊和群聊都走这里 —— 以前只有群聊有退避，私聊直接 raise，
+        于是每 5 秒撞一次 402，日志刷屏（用户 2026-11-09 反馈"报错了"）。
+
+        402 不一定是真没钱（实测见过余额 3.10 还报的），
+        所以先查一次余额：钱还在就只等很短，钱真没了才走长退避。
+        """
+        self._llm_block_fails = getattr(self, "_llm_block_fails", 0) + 1
+        ladder = (self.cfg.get("llm") or {}).get("blocked_backoff_s")             or [120, 300, 900, 1800]
+        wait = float(ladder[min(self._llm_block_fails - 1, len(ladder) - 1)])
+
+        balance_ok = False
+        balance_txt = ""
+        if "402" in str(e) or "Insufficient" in str(e):
+            try:
+                balance_ok, balance_txt = check_balance(self.cfg, self.api_key)
+            except Exception:
+                balance_ok = False
+            if balance_ok:
+                wait = float((self.cfg.get("llm") or {})
+                             .get("transient_402_backoff_s") or 60)
+                self._llm_block_fails = 0
+
+        self._llm_blocked_until = time.time() + wait
+        log(f"⛔ 大模型拒绝服务（{e}）")
+        if balance_ok:
+            log(f"   ⚠️ 但查了下余额还是有的（{balance_txt}）—— 判定为短暂抖动，"
+                f"只等 {int(wait)} 秒就重试。")
+        else:
+            log(f"   第 {self._llm_block_fails} 次失败 —— 暂停判断 {int(wait)} 秒"
+                f"（递增退避）")
+            if self._llm_block_fails == 1:
+                log("   消息会留着不丢；充值后最多等 2 分钟就自动恢复。")
+                log("   最常见原因：DeepSeek 账户余额不足 → 去 platform.deepseek.com 充值。")
+            # 在群里 @ 一下喊用户去充值（不经过大模型，因为余额已经没了）
+            if notify:
+                try:
+                    self.alert_no_balance(uid)
+                except Exception:
+                    pass
+        return wait
+
     def _try_collect_pay(self, rows: list, uid: str) -> None:
         """扫一遍这批消息，看有没有给「我」的红包/转账。
 
@@ -4507,8 +4601,12 @@ class GroupBrain:
             if _pd > 15:
                 log(f"[私聊·{self.nick(uid)}] ⚠️ 模型判断耗时 {_pd:.0f}s"
                     f"（prompt {len(prompt)} 字符）")
-        except LLMBlocked:
-            raise
+        except LLMBlocked as e:
+            # **不能直接 raise**：那样上层打一行日志就继续轮询，
+            # 5 秒后又撞一次 402（用户 2026-11-09 看到的刷屏）。
+            # 走统一退避，并且**不推进水位** —— 冷却结束后自动补判。
+            self._handle_llm_blocked(e)
+            return
         except Exception as e:
             log(f"[私聊·{self.nick(uid)}] 判断失败：{type(e).__name__}: {str(e)[:80]}")
             return
@@ -5308,45 +5406,7 @@ class GroupBrain:
             if _pj > 15:
                 log(f"[{self.nick(uid)}] ⚠️ 模型判断耗时 {_pj:.0f}s")
         except LLMBlocked as e:
-            # 递增退避，而不是一上来就固定等 30 分钟。
-            # 踩过：用户充值之后，守护进程还在傻等原来的 30 分钟冷却 ——
-            # 钱都充了它却不理人，看起来就是"卡了"。
-            # 现在第一次只等 2 分钟（充完值很快能恢复），连续失败才逐步拉长，
-            # 既快恢复，又不会对着一堵墙反复撞。
-            self._llm_block_fails = getattr(self, "_llm_block_fails", 0) + 1
-            ladder = self.cfg["llm"].get("blocked_backoff_s") or [120, 300, 900, 1800]
-            wait = float(ladder[min(self._llm_block_fails - 1, len(ladder) - 1)])
-            # **402 不一定是真没钱。**
-            # 实测（2026-10-18 19:45）：报了一条 Insufficient Balance，
-            # 可我立刻查 /user/balance —— 余额 31.51（其中 31.30 是 DeepSeek 赠送的），
-            # 马上再发一次请求也成功了。也就是说那是**一次短暂的状态**（限流 /
-            # 余额统计还没刷过来 / 赠送额度的生效延迟），不是真没钱。
-            # 但按原来的逻辑，这一下会让她**静默 30 分钟** —— 余额明明还在。
-            # 所以 402 之后先自己去查一次余额：钱还在就只等很短，钱真没了才走长退避。
-            balance_ok = False
-            balance_txt = ""
-            if "402" in str(e) or "Insufficient" in str(e):
-                balance_ok, balance_txt = check_balance(self.cfg, self.api_key)
-                if balance_ok:
-                    wait = float((self.cfg["llm"].get("transient_402_backoff_s")
-                                  or 60))
-                    self._llm_block_fails = 0
-            self._llm_blocked_until = time.time() + wait
-            log(f"⛔ 大模型拒绝服务（{e}）")
-            if balance_ok:
-                log(f"   ⚠️ 但查了下余额还是有的（{balance_txt}）—— 判定为**短暂抖动**，"
-                    f"只等 {int(wait)} 秒就重试，不停 30 分钟。")
-                log(f"   第 {self._llm_block_fails} 次（计数已清零）")
-                return []
-            log(f"   第 {self._llm_block_fails} 次失败 —— 暂停判断 {int(wait)} 秒"
-                f"（递增退避 2分/5分/15分/30分）")
-            if balance_txt:
-                log(f"   余额查询：{balance_txt}")
-            if self._llm_block_fails == 1:
-                log("   消息会留着不丢；充值后最多等 2 分钟就自动恢复。")
-            log("   最常见原因：DeepSeek 账户余额不足 → 去 platform.deepseek.com 充值。")
-            # 在群里 @ 一下用户去充值（不经过大模型，因为余额已经没了）
-            self.alert_no_balance(uid)
+            self._handle_llm_blocked(e, uid=uid, notify=True)
             return []
         except Exception as e:
             log(f"判定失败（{self.nick(uid)}）：{type(e).__name__}: {e}")

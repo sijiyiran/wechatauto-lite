@@ -57,15 +57,45 @@ MOMENTS_ACTION = ("看", "刷", "翻", "瞄", "瞅", "瞧", "扫")
 # 否定语境：这些不是在让她看朋友圈
 MOMENTS_NEG = ("朋友圈权限", "朋友圈关了", "不发朋友圈", "朋友圈屏蔽", "朋友圈背景")
 
+# **只有这几种句式才算"让她去看朋友圈"**（2026-11-10 收紧）。
+# 原来只要求「有朋友圈 + 任一动作词」，于是群里有人说
+# "我看过他朋友圈""朋友圈那个视频" 她也会说"我去看看" —— 用户明确要求关掉。
+#
+# 每条都要求动词和「朋友圈」挨得足够近，且是**对她说**的语气。
+MOMENTS_PATTERNS = (
+    # 你去看 / 你去刷 / 你翻一下 … 朋友圈
+    r"你.{0,4}(看|刷|翻|瞄|瞅|瞧|扫|点开|打开).{0,10}朋友圈",
+    # 看/刷/翻 … 我的朋友圈
+    r"(看|刷|翻|瞄|瞅|瞧|扫|点开|打开).{0,6}我.{0,4}朋友圈",
+    # 朋友圈你去看看 / 朋友圈看看
+    r"朋友圈.{0,4}(你|去).{0,4}(看|刷|翻|瞄|瞅|瞧)",
+    # 去看看朋友圈 / 刷下朋友圈（祈使短语，且不在"他/她/我"后面）
+    r"(?<![他她我])(去|帮).{0,4}(看|刷|翻|瞄|瞅|瞧).{0,6}朋友圈",
+    # **被 @ 了 + 动作词 + 朋友圈**（@ 本身就是"对她说"）
+    r"@[^\s\u2005]{0,30}.{0,6}(看|刷|翻|瞄|瞅|瞧|扫).{0,8}朋友圈",
+    # **句首祈使**：看看朋友圈 / 刷下朋友圈 / 翻翻朋友圈
+    r"^\s*(看|刷|翻|瞄|瞅|瞧|扫)(看|下|一下|一眼|一瞅)?\s*.{0,4}朋友圈",
+    # 问句"你刷朋友圈了吗"这种也算（她答应过要去看）
+    r"(看|刷|翻|瞄|瞅|瞧|扫)朋友圈.{0,6}(了?吗|没|没有)",
+)
+_MOMENTS_RE = None
 
-def wants_moments(text: str) -> bool:
-    """这句话是不是在让她去看朋友圈。
 
-    **不要求"看朋友圈"连续出现** —— 用户常说的是
-    「你去看我发的朋友圈」「你去看看我朋友圈」「刷一下我朋友圈」，
-    连续匹配会全部漏掉（这就是她答应了却不去的根因）。
-    判断方式：句子里有「朋友圈」+ 任意一个动作词。
+def wants_moments(text: str, sender_wxid: str = "",
+                  owner_wxid: str = "") -> bool:
+    """这句话是不是**主人在让她**去看朋友圈。
+
+    **2026-11-10 收紧**：用户反馈"群里有人发个朋友圈这个字她就会说
+    我去看看，但那个不是我发的，我也不需要"。所以：
+      ① 不再用宽泛的「关键词 + 动作词」判断，改成只认几种明确的祈使句式
+      ② **只有主人说才算**（owner_wxid 配了就强制校验）
     """
+    global _MOMENTS_RE
+    # **主人校验**：配了 owner 就只认这个人。
+    # 没配（空）时保持原行为，避免旧配置升级后突然不认人。
+    if owner_wxid:
+        if (sender_wxid or "").strip() != owner_wxid.strip():
+            return False
     t = (text or "").strip()
     if not t or len(t) > 200:
         return False
@@ -73,7 +103,10 @@ def wants_moments(text: str) -> bool:
         return False
     if "朋友圈" not in t:
         return False
-    return any(w in t for w in MOMENTS_ACTION)
+    if _MOMENTS_RE is None:
+        import re as _re
+        _MOMENTS_RE = _re.compile("|".join(MOMENTS_PATTERNS))
+    return bool(_MOMENTS_RE.search(t))
 
 
 def read_posts(db, limit: int = 20) -> list[dict]:
@@ -847,6 +880,43 @@ def find_send_button(region=None) -> tuple:
         评论框 (668,882,1868,1042)，发送按钮中心 (1524,1008)
         -> 相对 x 71.3%，相对 y 78.8%
     """
+    # ① **优先用 UIA 找真正的「发送」按钮控件**（2026-11-10 加）。
+    #    以前只用评论区比例估算，窗口位置/DPI 一变就点偏 ——
+    #    用户反馈"朋友圈发送按钮定位错地方"。
+    try:
+        from wechatauto import WeChatGUI
+        win = getattr(WeChatGUI()._get_uia(), "_win", None)
+        if win is not None:
+            hits = []
+
+            def _walk(c, d=0):
+                if d > 24 or hits:
+                    return
+                try:
+                    for ch in c.GetChildren():
+                        try:
+                            ct = ch.ControlTypeName
+                            nm = (ch.Name or "").strip()
+                            if ct == "ButtonControl" and nm in ("发送", "发送评论", "评论"):
+                                rr = ch.BoundingRectangle
+                                if rr.right - rr.left > 10 and rr.bottom - rr.top > 10:
+                                    hits.append(rr)
+                                    return
+                        except Exception:
+                            pass
+                        _walk(ch, d + 1)
+                except Exception:
+                    pass
+
+            _walk(win)
+            if hits:
+                rr = hits[0]
+                return (int((rr.left + rr.right) / 2),
+                        int((rr.top + rr.bottom) / 2))
+    except Exception:
+        pass
+
+    # ② 退回：评论区比例
     cell = find_comment_cell() if region is None else None
     if cell:
         l, tp, r, b = cell

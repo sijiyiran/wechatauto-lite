@@ -2953,6 +2953,35 @@ class GroupBrain:
                     pass
         return wait
 
+    def _is_owner(self, r: dict, uid: str = "") -> bool:
+        """这条消息是不是主人发的。
+
+        用户要求（2026-11-10）：朋友圈只有主人让她看才看。
+        没配 `owner_wxid` 时返回 True（不限制），保证旧配置行为不变。
+        """
+        try:
+            owner = str(self.cfg.get("owner_wxid") or "").strip()
+        except Exception:
+            owner = ""
+        if not owner:
+            return True
+        # 私聊：会话 uid 就是对方
+        if uid and uid.strip() == owner:
+            return True
+        # 群聊 / 兜底：看发言人
+        try:
+            if str((r or {}).get("sender_username") or "").strip() == owner:
+                return True
+        except Exception:
+            pass
+        try:
+            who = self.speaker_of(r) if hasattr(self, "speaker_of") else ""
+            if who and who == self.nick(owner):
+                return True
+        except Exception:
+            pass
+        return False
+
     def _try_collect_pay(self, rows: list, uid: str) -> None:
         """扫一遍这批消息，看有没有给「我」的红包/转账。
 
@@ -4430,7 +4459,12 @@ class GroupBrain:
                     import moments as _MO2
                     _hit2 = next((r for r in rows
                                   if not self._is_own_recent(uid, r)
-                                  and _MO2.wants_moments((r.get("content") or ""))), None)
+                                  and self._is_owner(r, uid)
+                                  and _MO2.wants_moments(
+                                      (r.get("content") or ""),
+                                      sender_wxid=uid,
+                                      owner_wxid=str(
+                                          self.cfg.get("owner_wxid") or ""))), None)
                     if _hit2 is not None:
                         self._moments_force = "有人点名让看朋友圈"
                         self._moments_ask_from = {"uid": uid, "kind": "dm",
@@ -5178,7 +5212,15 @@ class GroupBrain:
             try:
                 import moments as _MO
                 _hit = next((r for r in rows
-                             if _MO.wants_moments((r.get("content") or ""))), None)
+                             if (self._is_owner(
+                                r,
+                                (r.get("sender_username") or ""))
+                            and _MO.wants_moments(
+                                (r.get("content") or ""),
+                                sender_wxid=str(
+                                    r.get("sender_username") or ""),
+                                owner_wxid=str(
+                                    self.cfg.get("owner_wxid") or "")))), None)
                 if _hit is not None:
                     self._moments_force = "有人点名让看朋友圈"
                     # 记下来源，看完要回来说话

@@ -1,7 +1,7 @@
 {
-  "version": "2.4",
+  "version": "2.6",
   "edition": "portable",
-  "generated_at": "2026-11-11T22:50:46",
+  "generated_at": "2026-11-12T19:51:05",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -12,8 +12,8 @@
       "size": 123058
     },
     "brain.py": {
-      "sha256": "47b760af45a8e68d56034b1acd1dcc2530c45a776e71ba60f8d02aad2d31c00b",
-      "size": 367040
+      "sha256": "e676f819047206a9bde12d64050a9d80c84b586a781c4ab6265eeafb9cfa8036",
+      "size": 368364
     },
     "bridge.py": {
       "sha256": "9273009bdea4746d1b71f27b8e6fcff7ef4c35a8b834a44e125ce47ad0ddeaa6",
@@ -44,7 +44,7 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "f5ff1c69e62c93aa3c668efa4dcf4f4b5c4d718358845438e15082b3b715c2f3",
+      "sha256": "5c5b57293d34e12cc5210cc40ab8e3da82e71f879d5dd278df4ae16422cd52e4",
       "size": 129251
     },
     "install-keepalive.ps1": {
@@ -52,7 +52,7 @@
       "size": 4772
     },
     "installer.iss": {
-      "sha256": "d7a9a8e654bed1659414b7822c3b90d703d0621cc0641b45d7063c67793b1559",
+      "sha256": "ec4e664072a0eac05480eed940c8c4e2828b43dee2a03a2517ef72a6da465f90",
       "size": 6348
     },
     "keepalive.py": {
@@ -100,8 +100,8 @@
       "size": 1337
     },
     "selftest.py": {
-      "sha256": "bff7f87761d034922477d6d014b7c2c9c8134205900bf0b861702c9950c5ecb6",
-      "size": 38027
+      "sha256": "aed0dd7b229408273cde85d60f563d7fd08cafd94f10c3d539c2e071705b09f1",
+      "size": 38336
     },
     "selftest_e2e.py": {
       "sha256": "fd3d509f9a16dbb4aa9ab32b1766c51691cf81e48c6b24bda54a6aa3984b0cf0",

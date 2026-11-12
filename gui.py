@@ -42,7 +42,7 @@ try:
 except Exception:
     _UPD = None
 
-VERSION = "2.6"
+VERSION = "2.8"
 
 # ─────────────────────────────────────────────────────────────── 色板 ──
 # 取自 awesome-design-md / linear.app DESIGN.md，按桌面小窗微调过对比度。
@@ -1982,9 +1982,26 @@ class Settings(tk.Toplevel):
             v = tk.BooleanVar(value=bool(cur))
             w = ttk.Checkbutton(parent, variable=v, text="启用")
         elif kind == "combo":
-            v = tk.StringVar(value=str(cur))
-            w = ttk.Combobox(parent, textvariable=v, values=kw.get("values", []),
-                             state="readonly", width=49)
+            _choices = kw.get("choices")
+            if _choices:
+                # **显示中文，存原值**（2026-11-12 用户要求）。
+                # 如果直接把 values 换成中文，save() 会把中文写进 config，
+                # 后端的英文判断就全废了。所以记一张 label -> value 的反查表。
+                _labels = [str(c[1]) for c in _choices]
+                _cur_s = str(cur)
+                _cur_label = next((str(c[1]) for c in _choices
+                                   if str(c[0]) == _cur_s), _cur_s)
+                v = tk.StringVar(value=_cur_label)
+                w = ttk.Combobox(parent, textvariable=v, values=_labels,
+                                 state="readonly", width=49)
+                if not hasattr(self, "_combo_l2v"):
+                    self._combo_l2v = {}
+                self._combo_l2v[path] = {str(c[1]): c[0] for c in _choices}
+            else:
+                v = tk.StringVar(value=str(cur))
+                w = ttk.Combobox(parent, textvariable=v,
+                                 values=kw.get("values", []),
+                                 state="readonly", width=49)
         elif kind == "spin":
             v = tk.StringVar(value=list_to_text(cur))
             w = ttk.Spinbox(parent, textvariable=v, from_=kw.get("lo", 0),
@@ -2177,14 +2194,29 @@ class Settings(tk.Toplevel):
     def _tab_reply(self, nb):
         f = self._page(nb, "回复")
         self._row(f, 0, "接话模式", "combo", "participation.mode",
-                  values=["addressed_or_relevant", "addressed_only", "active", "silent"],
-                  hint="点名+相关 / 只接点名 / 主动插话 / 只旁观")
+                  choices=[
+                      ("addressed_or_relevant", "点名 + 相关就接"),
+                      ("addressed_only", "只接点名"),
+                      ("active", "主动插话"),
+                      ("silent", "只旁观"),
+                  ],
+                  hint="点名 + 相关：被 @ 或话题相关都接 / 只接点名：必须叫她 / "
+                       "主动插话：自己找话 / 只旁观：不发言")
         self._row(f, 1, "话痨程度", "combo", "participation.talkativeness",
-                  values=["quiet", "normal", "chatty"])
+                  choices=[
+                      ("quiet", "安静（少说话）"),
+                      ("normal", "正常"),
+                      ("chatty", "话痨（多说话）"),
+                  ],
+                  hint="影响她主动开口的频率和接话意愿")
         self._row(f, 2, "普通消息判断范围", "combo",
                   "participation.consider_plain_messages",
-                  values=["off", "questions", "all"],
-                  hint="off 只看点名 / questions 省 / all 每批都判断")
+                  choices=[
+                      ("off", "只看点名（最省）"),
+                      ("questions", "只看问句（省 token）"),
+                      ("all", "每批都判断（最灵但最贵）"),
+                  ],
+                  hint="没被 @ 的普通消息要不要也花一次模型判断")
         self._row(f, 3, "冷却（秒）", "spin", "participation.cooldown_s",
                   lo=0, hi=600, hint="两条消息之间至少隔多久")
         self._row(f, 4, "静默窗口（秒）", "spin", "participation.quiet_window_s",
@@ -2257,8 +2289,12 @@ class Settings(tk.Toplevel):
         self._row(f, 12, "逗满几次", "spin", "tease.count", lo=1, hi=20)
         self._row(f, 13, "冷处理（秒）", "spin", "tease.ignore_s", lo=30, hi=7200)
         self._row(f, 14, "收场方式", "combo", "tease.prefer",
-                  values=["either", "concede", "cold"],
-                  hint="自选 / 妥协 / 冷收场")
+                  choices=[
+                      ("either", "自选（看情况）"),
+                      ("concede", "妥协收场"),
+                      ("cold", "冷处理收场"),
+                  ],
+                  hint="被反复逗之后怎么收：自选 / 认怂 / 不理了")
         self._row(f, 15, "豁免名单", "entry", "tease.exempt",
                   hint="逗号分隔；这些人逗它不会被冷处理")
 
@@ -2720,8 +2756,66 @@ class Settings(tk.Toplevel):
         f = self._page(nb, "转述")
         self._row(f, 0, "开启转述", "check", "relay.enabled",
                   hint="主人说「帮我把这段话发给 X」，她替你发到那个应用")
-        self._row(f, 1, "只认这个微信", "entry", "relay.owner_wxid",
-                  hint="必须是主人的 wxid；别人发同样的字不生效")
+        _v_owner = self._row(f, 1, "只认这个微信", "entry", "relay.owner_wxid",
+                             hint="必须是主人的 wxid；别人发同样的字不生效")
+        # **识别按钮**（2026-11-12 用户要求）：不用手填 wxid。
+        # 做法：读当前打开的会话 —— 私聊取对方 wxid；群聊取最近说话最多的人。
+        _btn_row = tk.Frame(f, bg=C["canvas"])
+        _btn_row.grid(row=9998, column=1, sticky="w", pady=(2, 0))
+
+        def _detect_owner():
+            try:
+                import wechatauto
+                gui = getattr(self.master, "_wxgui", None)
+                if gui is None:
+                    gui = wechatauto.WeChatGUI()
+                    self.master._wxgui = gui
+                uid = ""
+                try:
+                    uid = str(gui.current_chat_username() or "")
+                except Exception:
+                    uid = ""
+                if not uid:
+                    # 退一步：问数据库当前会话
+                    try:
+                        db = self.master.db
+                        uid = str(db.get_current_chat() or "")
+                    except Exception:
+                        uid = ""
+                if uid and not uid.endswith("@chatroom"):
+                    _v_owner.set(uid)
+                    messagebox.showinfo(APP_NAME,
+                                        "已识别当前私聊对象：\n{}".format(uid))
+                    return
+                # 群聊：找最近说话最多的非机器人
+                try:
+                    db = self.master.db
+                    me = db.get_self_info().get("username", "")
+                    rows = db.get_messages(uid, limit=50) if uid else []
+                    cnt = {}
+                    for r in rows:
+                        sid = int(r.get("sender_id") or 0)
+                        name = str(r.get("sender_username") or "")
+                        if sid == 2 or not name or name == me:
+                            continue
+                        cnt[name] = cnt.get(name, 0) + 1
+                    if cnt:
+                        best = max(cnt.items(), key=lambda kv: kv[1])[0]
+                        _v_owner.set(best)
+                        messagebox.showinfo(
+                            APP_NAME,
+                            "这是群聊。已填入最近发言最多的人：\n{}\n"
+                            "如果不是主人，请手动改成主人的 wxid。".format(best))
+                        return
+                except Exception:
+                    pass
+                messagebox.showwarning(APP_NAME,
+                                       "没识别出来。请先打开和主人的私聊，再点一次。")
+            except Exception as e:
+                messagebox.showerror(APP_NAME, "识别失败：{}".format(e))
+
+        ttk.Button(_btn_row, text="识别当前聊天", style="TButton",
+                   cursor="hand2", command=_detect_owner).pack(side="left")
         self._row(f, 2, "发完按回车", "check", "relay.press_enter")
         self._row(f, 3, "等回复超时（秒）", "spin",
                   "relay.reply_timeout_s", lo=30, hi=3600)
@@ -2758,6 +2852,10 @@ class Settings(tk.Toplevel):
         for path, var in self.vars.items():
             cur = dig(cfg, path)
             val = var.get()
+            # **中文 label -> 原值**（下拉框用 choices 显示中文时）
+            _l2v = getattr(self, "_combo_l2v", {}).get(path)
+            if _l2v:
+                val = _l2v.get(str(val), val)
             if isinstance(cur, bool) or isinstance(var, tk.BooleanVar):
                 v = bool(val)
             elif isinstance(cur, int):

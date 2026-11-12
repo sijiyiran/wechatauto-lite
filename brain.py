@@ -1703,34 +1703,50 @@ def describe_image_rows(cfg: dict, db, rows: list[dict], chat: str,
     for key, r in todo:
         lid = int(r["local_id"])
         p = None
-        try:
-            p = dl.download_image(chat, lid, save_dir=str(out_dir), tier="best")
-        except Exception as e:
-            log(f"[看图] 解密图片失败（{key}）：{type(e).__name__}: {str(e)[:80]}")
 
-        # **拿到 .wxgf 就降级到缩略图。**
-        # 微信新版图片用 H.266/VVC 编码，ffmpeg 解不了（实测 tier=best 返回
-        # 69KB 的 wxgf，转不出来）。但 tier=thumb 是 14KB 的 jpg —— 能看。
-        # 分辨率低一点无所谓，"图里是什么"才是模型要的。
-        if p and str(p).lower().endswith(".wxgf"):
+        # **先下缩略图**（2026-11-12 优化）。
+        # 踩过：原来一上来 tier="best"，实测单张要 40+ 秒；而那张图
+        # 最后还是因为 VVC 编码降级成 thumb。看图只要"看清是什么"，
+        # 12KB 的缩略图完全够，没必要等原图。
+        _t_dl = time.time()
+        try:
+            p = dl.download_image(chat, lid, save_dir=str(out_dir), tier="thumb")
+        except Exception as e:
+            log(f"[看图] 缩略图下载失败（{key}）：{type(e).__name__}: {str(e)[:60]}")
+            p = None
+
+        # thumb 拿不到 / 仍是 VVC -> 才回头试 best
+        if (not p) or str(p).lower().endswith(".wxgf"):
             try:
-                p2 = dl.download_image(chat, lid, save_dir=str(out_dir),
-                                       tier="thumb")
-                if p2:
-                    log(f"[看图] {key} 是 VVC 编码，已降级用缩略图")
+                p2 = dl.download_image(chat, lid, save_dir=str(out_dir), tier="best")
+                if p2 and not str(p2).lower().endswith(".wxgf"):
+                    log(f"[看图] {key} 缩略图不可用，改用原图")
                     try:
-                        pathlib.Path(p).unlink(missing_ok=True)
+                        if p:
+                            pathlib.Path(p).unlink(missing_ok=True)
                     except Exception:
                         pass
                     p = p2
+                elif p2:
+                    # best 也是 wxgf（VVC），删掉，保留能看的 thumb
+                    try:
+                        pathlib.Path(p2).unlink(missing_ok=True)
+                    except Exception:
+                        pass
             except Exception:
                 pass
+
+        _dl_s = time.time() - _t_dl
 
         if not p:
             descs[key] = ""          # 记一笔"这张取不到"，下次别再试
             continue
         try:
+            _t_v = time.time()
             d = vision_describe(cfg, pathlib.Path(p), api_key)
+            _v_s = time.time() - _t_v
+            if _dl_s + _v_s > 8:
+                log(f"[看图] {key} 耗时：下载 {_dl_s:.1f}s + 看模型 {_v_s:.1f}s")
         except LLMBlocked:
             raise
         except Exception as e:
@@ -4081,6 +4097,20 @@ class GroupBrain:
             log(f"[朋友圈] 读取失败：{type(e).__name__}: {str(e)[:80]}")
             return {"seen_n": 0, "liked": [], "commented": [], "notes": [],
                     "fail": "读库失败"}
+
+        # **排除自己发的朋友圈**（2026-11-12 修）。
+        # 踩过：deepsleep（我自己）16:22 那条被当成"新动态"，
+        # 然后 find_item 在界面上永远找不到 —— 因为她不该给自己点赞。
+        try:
+            _me_nick = (self.my_nick or "").strip()
+            if _me_nick:
+                _before_n = len(posts)
+                posts = [p for p in posts
+                         if str(p.get("nickname") or "").strip() != _me_nick]
+                if len(posts) != _before_n:
+                    log("[朋友圈] 跳过自己发的 {} 条".format(_before_n - len(posts)))
+        except Exception:
+            pass
 
         seen = set(st.get("seen") or [])
         fresh = MO.filter_new(posts, seen)

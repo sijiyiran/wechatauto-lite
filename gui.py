@@ -42,7 +42,7 @@ try:
 except Exception:
     _UPD = None
 
-VERSION = "2.4"
+VERSION = "2.6"
 
 # ─────────────────────────────────────────────────────────────── 色板 ──
 # 取自 awesome-design-md / linear.app DESIGN.md，按桌面小窗微调过对比度。

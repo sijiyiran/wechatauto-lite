@@ -6141,12 +6141,91 @@ class GroupBrain:
         save_state(self.state)
 
     def do_poke(self, uid: str) -> tuple[bool, str]:
-        """拍当前群里最新说话的那个人。"""
+        """拍当前群里最新说话的那个人。
+
+        **2026-11-12 重写**：原来调 wechatauto 的 `Poke`（右键 + 全屏 OCR），
+        在微信 4.2 上必然失败 —— 实测全屏 OCR 认不出「拍一拍」这三个字。
+        改成 UIA 找菜单项：
+          右键头像 -> UIA 在窗口树里找 Name 含「拍一拍」的元素 -> 点它的中心。
+        """
+        import time as _t
         try:
-            r = self.wx().Poke(who=self.nick(uid))
-            return bool(r), str(r.get("message") if isinstance(r, dict) else r)
+            import ctypes
+            try:
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            except Exception:
+                pass
+            u = ctypes.windll.user32
+
+            def _click(x, y, right=False):
+                u.SetCursorPos(int(x), int(y))
+                _t.sleep(0.25)
+                if right:
+                    u.mouse_event(0x0008, 0, 0, 0, 0)
+                    _t.sleep(0.05)
+                    u.mouse_event(0x0010, 0, 0, 0, 0)
+                else:
+                    u.mouse_event(0x0002, 0, 0, 0, 0)
+                    _t.sleep(0.05)
+                    u.mouse_event(0x0004, 0, 0, 0, 0)
+
+            gui = self.gui()
+            gui.ensure_visible()
+            name = self.nick(uid)
+            gui.open_chat(name)
+            _t.sleep(0.9)
+
+            uia_obj = gui._get_uia()
+            row = uia_obj._find_friend_row()
+            if row is None:
+                return False, "找不到对方的消息行（先让对方发一条消息）"
+            r = row.BoundingRectangle
+            ax = int(r.left + 62)
+            ay = int(r.top + (r.bottom - r.top) * 0.5)
+            _click(ax, ay, right=True)
+            _t.sleep(1.0)
+
+            # UIA 找「拍一拍」菜单项
+            target = []
+            root = getattr(uia_obj, "_win", None)
+
+            def walk(c, d=0):
+                if d > 28 or target:
+                    return
+                try:
+                    for ch in c.GetChildren():
+                        try:
+                            nm = (ch.Name or "").strip()
+                            if "拍一拍" in nm:
+                                target.append(ch)
+                                return
+                        except Exception:
+                            pass
+                        walk(ch, d + 1)
+                except Exception:
+                    pass
+
+            if root is not None:
+                walk(root)
+
+            if target:
+                rr = target[0].BoundingRectangle
+                cx = int((rr.left + rr.right) / 2)
+                cy = int((rr.top + rr.bottom) / 2)
+                _click(cx, cy)
+                _t.sleep(0.6)
+                return True, "已对「{}」拍一拍".format(name)
+
+            # 没找到 -> ESC 关菜单
+            try:
+                u.keybd_event(0x1B, 0, 0, 0)
+                _t.sleep(0.05)
+                u.keybd_event(0x1B, 0, 2, 0)
+            except Exception:
+                pass
+            return False, "右键菜单里没找到「拍一拍」"
         except Exception as e:
-            return False, f"{type(e).__name__}: {e}"
+            return False, "{}: {}".format(type(e).__name__, e)
 
     def sticker_cfg(self) -> dict:
         return (self.cfg.get("abilities") or {}).get("sticker") or {}

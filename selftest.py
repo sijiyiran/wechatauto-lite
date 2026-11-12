@@ -211,7 +211,7 @@ def _():
     m = cfg.get("moments") or {}
     assert m.get("enabled") is True, "朋友圈默认应该是开的"
     slots = m.get("schedule") or []
-    assert slots == ["06:30", "12:00", "21:00"], f"看朋友圈的时间点不对：{slots}"
+    assert slots == ["06:00", "12:00", "21:00"], f"看朋友圈的时间点不对：{slots}"
 
     # 触发词：点名让看要看，聊到朋友圈权限/屏蔽不算
     for yes in ("@deepsleep 去看看朋友圈", "你刷朋友圈了吗", "看看朋友圈有没有更新"):
@@ -558,20 +558,25 @@ def _():
             _json.dumps(orig, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-@check("家属向脏话必须整条拦下（自嘲被 @ 会变成骂人）")
+@check("家属向脏话要换说法而不是整条消失")
 def _():
     # 实测两次很难看的：
     #   ① 有人问"你父母呢，是不是很早就死了"，它答"没有父母\n哪来的死活"，
     #      本意是"（我是AI）没有父母"，但它 @ 了对方 → 读起来就是骂人家没父母。
     #   ② 有人说"所以你本来就没父母"，它回"你是靠结婚证生的？"（暗讽野种）。
-    # 提示词拦不住这类，所以放代码里。
+    # 提示词拦不住这类，所以放代码里硬拦。
+    #
+    # **2026-11-09 改行为**：用户要求"拦截后就不会说了，改一下" ——
+    # 命中脏话不再整条丢弃，而是换成温和说法继续发；换不掉才丢。
     persona = {"max_chars": 60, "forbidden": [], "allow_markdown": False,
                "allow_links": False}
     bad = ["@拾二月的旧灯 没有父母", "没有父母\n哪来的死活", "@燃 你是靠结婚证生的？",
            "？你妈死了", "孤儿一个", "草你妈的", "你全家长得都这样？",
            "？嘴真臭\n你妈没教过你说话？"]
     for s in bad:
-        assert B.sanitize(s, persona).strip() == "", f"没拦住：{s!r}"
+        out = B.sanitize(s, persona).strip()
+        assert out, f"整条消失了（应该换成温和说法）：{s!r}"
+        assert not B.family_insult_hit(out), f"换完还带脏话：{out!r}"
     # 不能误伤：含"妈"但不是骂人的要放行
     good = ["？你再说一遍试试", "行吧[叹气]", "？嘴这么脏，刷牙了吗",
             "？！你才傻逼", "妈妈叫你回家吃饭", "？真请还是骗我[旺柴]", "我不用睡觉"]

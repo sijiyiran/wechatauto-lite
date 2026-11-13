@@ -1,7 +1,7 @@
 {
-  "version": "2.9",
+  "version": "3.1",
   "edition": "portable",
-  "generated_at": "2026-11-13T21:03:18",
+  "generated_at": "2026-11-13T22:30:43",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -12,8 +12,8 @@
       "size": 123058
     },
     "brain.py": {
-      "sha256": "f34b9236f47fb38b978e3e0f1186b0aecad772cb0eae46992b9172580fdebeb1",
-      "size": 372452
+      "sha256": "bd27de056e0466df4022aeed0e455cb5d26718f68ba9eaaee54e97d648e265a4",
+      "size": 377757
     },
     "bridge.py": {
       "sha256": "9273009bdea4746d1b71f27b8e6fcff7ef4c35a8b834a44e125ce47ad0ddeaa6",
@@ -44,15 +44,19 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "5e06dcdae1a0005526c09fcd8265416d3efd852a07fa5d9380996d584f6d9ac1",
+      "sha256": "dd584c29c7d6ec02e8fb469dc640716658c5fcf8d6b371a7b59e0e39e3e60bb1",
       "size": 135858
     },
     "install-keepalive.ps1": {
       "sha256": "4105847609425b1b99ddaf00e93389bf36280a857b724cd3c75b51e912f2fffe",
       "size": 4772
     },
+    "installer-lite.iss": {
+      "sha256": "566279b1a2edfe0dac41483faa8260ee8e81c2f12779e2eb49734aa9241966d2",
+      "size": 3647
+    },
     "installer.iss": {
-      "sha256": "ed72feeb3b81dddb4361e2069e25f55d06ae4683a41d5e7254d7d952fe261a28",
+      "sha256": "638895bfe005cf0352aeb9c10bb11c6a8ecb06c5271e1c5d0cfad7037b157cee",
       "size": 6348
     },
     "keepalive.py": {
@@ -64,8 +68,8 @@
       "size": 29734
     },
     "moments.py": {
-      "sha256": "3fa19e0075e091150e78709a8946e1a4b3ba21652aee99e0d08b2055f7f6c427",
-      "size": 65646
+      "sha256": "80d619ca7c2db47a87b78f02d4418eb4c225f83be9a2b8655be4b8a56825d1ad",
+      "size": 77238
     },
     "open-brain.cmd": {
       "sha256": "0e6012c817cc9c506ffc439db776afc62e86d30399137174af0564dbe7a961d8",

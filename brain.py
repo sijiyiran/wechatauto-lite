@@ -4095,27 +4095,34 @@ class GroupBrain:
                     log("[朋友圈] 预热跳过：{}".format(type(_e).__name__))
 
                 _seen_now = set(st.get("seen") or [])
-                posts, _hit_seen = MO.scroll_until_seen(
-                    lambda: MO.read_posts(mdb, limit=_rl),
-                    _seen_now,
-                    max_rounds=int(m.get("scroll_load_rounds", 12)),
-                    per_round=int(m.get("scroll_per_round", 3)),
-                    list_rect=_rect,
-                    allow_fallback=bool(m.get("scroll_fallback", True)),
-                    step=int(m.get("scroll_step", 600)))
-                log(f"[朋友圈] 往下滑，碰到看过的就停：新动态 {len(posts)} 条"
-                    f"（{'碰到边界' if _hit_seen else '到底/到上限'}）")
-                # **收集完必须滚回顶部！**
-                # 踩过（2026-10-21）：为了找新动态把页面往下滑了，滑完之后
-                # 最新的那几条被滚出屏幕上方，后面去点赞/评论时报
-                # "界面上找不到这条" —— 明明刚看到过。
-                # 互动必须从顶部开始，因为 UIA 只认识渲染出来的条目。
-                try:
-                    MO.scroll_to_top(times=25, allow_fallback=True)
-                    time.sleep(1.2)
-                    log("[朋友圈] 收集完已滚回顶部，准备互动")
-                except Exception:
-                    pass
+
+                # **一遍过模式：不做预收集，也不预先滑到底。**
+                # 2026-11-13 用户要求改成"滑到一条 -> 判断 -> 就地做 -> 再滑下一条"。
+                # 所以这里只读一次库当"认领清单"，滚动交给 scan_and_interact。
+                if bool(m.get("one_pass", True)):
+                    posts = MO.read_posts(mdb, limit=_rl)
+                    log("[朋友圈] 一遍过模式：不预滑，先读最近 {} 条备查".format(len(posts)))
+                else:
+                    posts, _hit_seen = MO.scroll_until_seen(
+                        lambda: MO.read_posts(mdb, limit=_rl),
+                        _seen_now,
+                        max_rounds=int(m.get("scroll_load_rounds", 12)),
+                        per_round=int(m.get("scroll_per_round", 3)),
+                        list_rect=_rect,
+                        allow_fallback=bool(m.get("scroll_fallback", True)),
+                        step=int(m.get("scroll_step", 600)))
+                    log(f"[朋友圈] 往下滑，碰到看过的就停：新动态 {len(posts)} 条"
+                        f"（{'碰到边界' if _hit_seen else '到底/到上限'}）")
+                    # **批量路径收集完必须滚回顶部！**
+                    # 踩过（2026-10-21）：为了找新动态把页面往下滑了，滑完之后
+                    # 最新的那几条被滚出屏幕上方，后面去点赞/评论时报
+                    # "界面上找不到这条" —— 明明刚看到过。
+                    try:
+                        MO.scroll_to_top(times=25, allow_fallback=True)
+                        time.sleep(1.2)
+                        log("[朋友圈] 收集完已滚回顶部，准备互动")
+                    except Exception:
+                        pass
             else:
                 posts = MO.read_posts(mdb, limit=_rl)
         except Exception as e:
@@ -4208,19 +4215,8 @@ class GroupBrain:
             except Exception as e:
                 log(f"[朋友圈] 截图失败：{type(e).__name__}: {str(e)[:80]}")
 
-        lines = []
-        for p in fresh:
-            note = img_notes.get(MO.post_key(p))
-            lines.append(MO.describe(p, {MO._post_id(p): note} if note else None))
+        # ── 公共准备（一遍过 / 批量两条路径都要用）──
         persona = self.persona_prompt_block()
-        try:
-            acts = MO.decide(
-                self.cfg, self.api_key, persona, lines,
-                max_comments=int(m.get("max_comments_per_run", 3)))
-        except Exception as e:
-            log(f"[朋友圈] 判断失败：{type(e).__name__}: {str(e)[:80]}")
-            return
-
         dry = bool((self.cfg.get("safety") or {}).get("dry_run", False)) or \
             bool(m.get("dry_run", True))
         try:
@@ -4230,6 +4226,76 @@ class GroupBrain:
         except Exception as e:
             log(f"[朋友圈] 拿不到 Moment 实例：{type(e).__name__}，只记录不操作")
             mo = None
+
+        # ══════════════════════════════════════════════════════
+        #  **一遍过模式**（2026-11-13 用户要求，moments.one_pass=true）
+        #  不再"先批量判断再逐条回顶部找"，而是：
+        #    滑到一条 -> 单独判断这一条 -> 就地做 -> 再滑下一条
+        #  好处是收集和操作不分离，不会出现"回顶部后找错人"。
+        #  代价是每条一次 LLM（用户明确说成本无所谓）。
+        # ══════════════════════════════════════════════════════
+        if bool(m.get("one_pass", True)) and not dry and mo is not None:
+            def _judge_one(post, item):
+                try:
+                    _note = (img_notes or {}).get(MO.post_key(post))
+                    _line = MO.describe(
+                        post, {MO._post_id(post): _note} if _note else None)
+                    _a = MO.decide(self.cfg, self.api_key, persona, [_line],
+                                   max_comments=1)
+                    return _a[0] if _a else {"like": False, "comment": ""}
+                except Exception:
+                    return {"like": False, "comment": ""}
+
+            def _do_one(item, act):
+                return MO.like_or_comment(mo, item, act, dry_run=False)
+
+            def _seen_one(pid):
+                seen.add(pid)
+                st["seen"] = list(seen)[-300:]
+                save_state(self.state)
+
+            log("[朋友圈] 一遍过模式：逐条判断、就地互动")
+            _scan = MO.scan_and_interact(
+                mo, posts, seen,
+                judge=_judge_one,
+                do_act=_do_one,
+                on_seen=_seen_one,
+                log=lambda s: log(s),
+                max_rounds=int(m.get("scroll_load_rounds", 12)),
+                step=int(m.get("scroll_step", 600)),
+                list_rect=_rect,
+                max_per_run=int(m.get("max_per_run", 8)),
+                allow_fallback=bool(m.get("scroll_fallback", True)),
+                my_nick=self.my_nick)
+
+            st["seen"] = list(seen)[-200:]
+            save_state(self.state)
+            self._restore_chat_tab("朋友圈")
+            log("[朋友圈] 这一轮结束（一遍过：扫了 {} 条，赞 {}，评 {}）".format(
+                len(_scan.get("processed") or []),
+                len(_scan.get("liked") or []),
+                len(_scan.get("commented") or [])))
+            _r2 = {"seen_n": len(_scan.get("processed") or []),
+                   "liked": _scan.get("liked") or [],
+                   "commented": _scan.get("commented") or [],
+                   "notes": [(str(p.get("nickname") or ""),
+                              str(p.get("text") or "")[:40], "")
+                             for p in (_scan.get("processed") or [])]}
+            self._moments_force = ""
+            return _r2
+
+        # ── 批量路径（one_pass=false 时走这里）──
+        lines = []
+        for p in fresh:
+            note = img_notes.get(MO.post_key(p))
+            lines.append(MO.describe(p, {MO._post_id(p): note} if note else None))
+        try:
+            acts = MO.decide(
+                self.cfg, self.api_key, persona, lines,
+                max_comments=int(m.get("max_comments_per_run", 3)))
+        except Exception as e:
+            log(f"[朋友圈] 判断失败：{type(e).__name__}: {str(e)[:80]}")
+            return
 
         # 收集这一轮干了什么，看完要汇报给喊她的人
         _result = {"seen_n": len(fresh), "liked": [], "commented": [],
@@ -4251,8 +4317,28 @@ class GroupBrain:
             except Exception:
                 pass
 
-        for post, act, ln in zip(fresh, acts, lines):
+        # **互动前先滚回顶部，然后逐条向下找、就地做。**
+        # 2026-11-13 改：原来是把 fresh 全部收集完（一路滑到底）再回顶部，
+        # 然后逐条 find_item —— 虚拟滚动下回顶部只渲染 1~2 条，
+        # 找出来的 item 经常是错的，导致「同一条点两次赞」「评论跑到别人那」。
+        # 现在保持"从顶部开始、逐条向下、找到就做"，全程不回顶部。
+        _interact_top_done = False
+        # **已用过的 UI 条目**（2026-11-13）：
+        # 纯图片动态的 control.Name 完全一样（'四季亦然 包含1张图片 1分钟前'），
+        # 按 Name 匹配永远命中第一条 —— 同一条被点两次赞、评论也发错地方。
+        # 按处理顺序传 used，让第 2 条找第 2 个同 Name 条目。
+        _used_items = set()
+        for _idx_i, (post, act, ln) in enumerate(zip(fresh, acts, lines)):
             pid = MO._post_id(post)
+
+            if not _interact_top_done and not dry and mo is not None:
+                try:
+                    MO.scroll_to_top(times=25, allow_fallback=True)
+                    time.sleep(1.0)
+                    _interact_top_done = True
+                except Exception:
+                    pass
+
             # 按配置过滤动作
             want_like = bool(act.get("like")) and bool(m.get("allow_like", True))
             want_cmt = bool(act.get("comment")) and bool(m.get("allow_comment", True))
@@ -4294,13 +4380,13 @@ class GroupBrain:
                 from wechatauto import Moment as _M, WeChat as _W
                 _mo2 = _M(_W())
                 _items2 = _mo2.GetMoments() or []
-                item_now = MO.find_item(_items2, post)
+                item_now = MO.find_item(_items2, post, used=_used_items)
                 if item_now is not None:
                     mo = _mo2
                 else:
-                    item_now = MO.find_item(ui_items, post)
+                    item_now = MO.find_item(ui_items, post, used=_used_items)
             except Exception:
-                item_now = MO.find_item(ui_items, post)
+                item_now = MO.find_item(ui_items, post, used=_used_items)
 
             # 还找不到？**往下滑固定路程再找**（用户 2026-11-09 要求）。
             # 朋友圈是虚拟滚动：滚回顶部只渲染最新 1~2 条，
@@ -4310,6 +4396,8 @@ class GroupBrain:
                 try:
                     _rounds = int(m.get("interact_scroll_rounds", 10))
                     _step = int(m.get("interact_scroll_step", 600))
+                    # **从当前位置往下找**（不回顶部）：
+                    # 上一条做完后滚动位置就在它附近，下一条通常就在下面一两屏内。
                     item_now, _mo3 = MO.scroll_until_item(
                         mo, post,
                         max_rounds=_rounds,
@@ -4318,6 +4406,7 @@ class GroupBrain:
                         allow_fallback=True)
                     if item_now is not None:
                         mo = _mo3
+                        _used_items.add(id(item_now))
                         log("[朋友圈] 往下滑找到了这条")
                     else:
                         log("[朋友圈] 滑了 {} 段还是没找到".format(_rounds))

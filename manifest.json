@@ -1,7 +1,7 @@
 {
   "version": "2.9",
   "edition": "portable",
-  "generated_at": "2026-11-13T20:49:11",
+  "generated_at": "2026-11-13T21:03:18",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -12,8 +12,8 @@
       "size": 123058
     },
     "brain.py": {
-      "sha256": "7d891170f6b26cf67ded4fc144b91d536ce9c260452f1072396feb7539335c55",
-      "size": 371239
+      "sha256": "f34b9236f47fb38b978e3e0f1186b0aecad772cb0eae46992b9172580fdebeb1",
+      "size": 372452
     },
     "bridge.py": {
       "sha256": "9273009bdea4746d1b71f27b8e6fcff7ef4c35a8b834a44e125ce47ad0ddeaa6",

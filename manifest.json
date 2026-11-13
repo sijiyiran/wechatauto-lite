@@ -1,7 +1,7 @@
 {
-  "version": "2.8",
+  "version": "2.9",
   "edition": "portable",
-  "generated_at": "2026-11-12T21:58:38",
+  "generated_at": "2026-11-13T20:49:11",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -44,15 +44,15 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "d945a2ef446440ac1e12e056a0e87d90e24a9a076a8627e713d8d59f888381d9",
-      "size": 134282
+      "sha256": "5e06dcdae1a0005526c09fcd8265416d3efd852a07fa5d9380996d584f6d9ac1",
+      "size": 135858
     },
     "install-keepalive.ps1": {
       "sha256": "4105847609425b1b99ddaf00e93389bf36280a857b724cd3c75b51e912f2fffe",
       "size": 4772
     },
     "installer.iss": {
-      "sha256": "feac7e4f4515f1c17fcb4928a74040eee9c00a7442086aa9cf22abdefdf20ad1",
+      "sha256": "ed72feeb3b81dddb4361e2069e25f55d06ae4683a41d5e7254d7d952fe261a28",
       "size": 6348
     },
     "keepalive.py": {

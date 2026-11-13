@@ -22,6 +22,7 @@
 """
 from __future__ import annotations
 
+import time as _import_time
 import json
 import re
 import time
@@ -422,7 +423,7 @@ def capture_images(mo, items, save_dir, describe_path, want_keys=None) -> dict:
             continue
     return out
 
-def find_item(items, post: dict):
+def find_item(items, post: dict, used: set = None):
     """在 UI 条目里找到和这条动态对应的那个。
 
     为什么不用 `LikeMoment(publisher=...)`：那个会**重新滚动定位**，
@@ -434,8 +435,61 @@ def find_item(items, post: dict):
     txt = str(post.get("text") or "").strip()
     if not items:
         return None
-    # 先按 昵称 + 正文前 10 字 精确配
-    for it in items:
+
+    # **`used`：已经处理过的 UI 条目，别再返回第二次**（2026-11-13）
+    #
+    # 为什么会需要：纯图片动态的 Name 是 `'四季亦然 包含1张图片 1分钟前'`，
+    # 同一个人连发两条纯图，Name **完全一样** —— 按 Name 匹配永远命中第一条，
+    # 于是第二条的处理全落到第一条上：同一条被点两次赞、评论也发到同一条。
+    # 有了 used，调用方按处理顺序传进来，就能做到「第 1 条找第 1 个、
+    # 第 2 条找第 2 个」。
+    _used = used if used is not None else set()
+
+    def _cand(items_iter):
+        for _it in items_iter:
+            if id(_it) in _used:
+                continue
+            yield _it
+
+    # **判据换成 control.Name（2026-11-13 实测发现的关键）**
+    #
+    # 原来用 `it.publisher` 匹配 —— 但实测微信 4.2 里 UI 条目的
+    # `publisher` / `nickname` 都是**空字符串**！
+    #     publisher='' nickname='' pid=10408（所有条目都一样）
+    # 而 `control.Name` 是完整的：
+    #     '澜 别着急，一人一枪头 视频 2天前 '
+    #     '四季亦然 sid是个人物 包含9张图片 2天前 '
+    # 所以必须拿 Name 去配，否则永远匹配不上 -> 退化成乱配 ->
+    # 用户看到的「同一条点两次赞」「评论跑到别人朋友圈下面」。
+    def _ui_name(it) -> str:
+        try:
+            c = getattr(it, "control", None)
+            return str(getattr(c, "Name", "") or "")
+        except Exception:
+            return ""
+
+    # ① 最可靠：Name 里同时含 昵称 和 正文前 10 字
+    if who and txt:
+        for it in _cand(items):
+            nm = _ui_name(it)
+            if nm and who in nm and txt[:10] in nm:
+                return it
+
+    # ② 正文为空（纯图片/视频动态）：Name 含昵称 + 与动态类型有关的词
+    if who and not txt:
+        for it in _cand(items):
+            nm = _ui_name(it)
+            if nm and who in nm:
+                return it
+
+    # ③ 退路：只用昵称（Name 里含）
+    if who:
+        same = [it for it in _cand(items) if who in _ui_name(it)]
+        if len(same) == 1:
+            return same[0]
+
+    # ④ 最后退路：原来的 publisher 匹配（老版微信/别的版本可能有用）
+    for it in _cand(items):
         try:
             if (str(getattr(it, "publisher", "") or "") != who):
                 continue
@@ -444,16 +498,6 @@ def find_item(items, post: dict):
                 return it
         except Exception:
             continue
-    # 退一步：正文为空或都很短时只按昵称配（但要求昵称唯一）
-    same = []
-    for it in items:
-        try:
-            if str(getattr(it, "publisher", "") or "") == who:
-                same.append(it)
-        except Exception:
-            continue
-    if len(same) == 1:
-        return same[0]
     return None
 
 
@@ -1133,6 +1177,12 @@ def scroll_to_top(times: int = 20, list_rect=None,
     if cx is None:
         # 找不到朋友圈列表且不允许兜底 -> **不滚**，别乱动别人的窗口
         return
+    # **滚前确保微信在前台**（和 scroll_down 同一个坑）
+    try:
+        bring_wechat_front()
+        _t.sleep(0.15)
+    except Exception:
+        pass
     try:
         pyautogui.FAILSAFE = False
         pyautogui.moveTo(cx, cy, duration=0.2)
@@ -1224,6 +1274,11 @@ def warmup_scroll(rect=None, step: int = 240, allow_fallback: bool = True) -> No
     if not r:
         return
     try:
+        bring_wechat_front()
+        _t.sleep(0.15)
+    except Exception:
+        pass
+    try:
         cx = int((r[0] + r[2]) / 2)
         cy = int((r[1] + r[3]) / 2)
         pyautogui.FAILSAFE = False
@@ -1254,6 +1309,15 @@ def scroll_down(step: int = 600, list_rect=None,
     r = list_rect or find_list_rect(allow_fallback=allow_fallback)
     if not r:
         return False
+    # **滚动前必须让微信在前台。**
+    # 实测（2026-11-13）：窗口失焦时 pyautogui.scroll 的滚轮事件会被吞，
+    # 界面一动不动，但本函数照样 return True —— 上层以为滑了，其实没滑。
+    # 表现就是「连续两段没有新条目，滑到底了」提前结束。
+    try:
+        bring_wechat_front()
+        _t.sleep(0.15)
+    except Exception:
+        pass
     try:
         cx = int((r[0] + r[2]) / 2)
         cy = int((r[1] + r[3]) / 2)
@@ -1261,6 +1325,7 @@ def scroll_down(step: int = 600, list_rect=None,
         pyautogui.moveTo(cx, cy, duration=0.15)
         _t.sleep(0.1)
         pyautogui.scroll(-int(step))       # 负数 = 向下
+        _t.sleep(0.5)
         return True
     except Exception:
         return False
@@ -1607,6 +1672,214 @@ def ensure_wechat_on_screen() -> tuple:
         return True, "窗口正常 ({},{},{},{})".format(l, t, r, b)
     except Exception as e:
         return True, "读窗口位置失败：{}".format(type(e).__name__)
+
+
+# ──────────────────────────────────────────────────────────────
+#  一遍过：滑到一条 -> 判断 -> 就地做
+# ──────────────────────────────────────────────────────────────
+
+def _ui_name(item) -> str:
+    """取 UI 条目的完整描述文字。
+
+    微信 4.2 的 Moment 条目 `publisher` / `nickname` 都是**空字符串**，
+    只有 `control.Name` 是完整的：
+        '澜 别着急，一人一枪头 视频 2天前 '
+        '四季亦然 包含1张图片 3分钟前 '
+    """
+    try:
+        c = getattr(item, "control", None)
+        return str(getattr(c, "Name", "") or "")
+    except Exception:
+        return ""
+
+
+def _ui_uid(item):
+    """UI 条目的身份标识，用来判断"这一屏的这条是不是已经处理过"。
+
+    用 control 的 RuntimeId —— 同一次渲染里稳定，滑动重排后仍能区分。
+    拿不到就退回 python 对象 id。
+    """
+    try:
+        c = getattr(item, "control", None)
+        rid = c.GetRuntimeId()
+        if rid:
+            return tuple(rid)
+    except Exception:
+        pass
+    return ("obj", id(item))
+
+
+def _name_matches_post(ui_name: str, post: dict) -> bool:
+    """UI 的 Name 是否对应这条数据库动态。
+
+    Name 的组成是「昵称 + (正文前若干字 | 包含N张图片 | 视频) + 时间」。
+    所以：
+      · 必须以昵称开头
+      · 有正文的，正文前 10 字要出现在 Name 里
+      · 没正文的（纯图/纯视频），只要昵称对上就算 —— 同名多条由
+        "按顺序认领"的机制保证不会错配。
+    """
+    who = str(post.get("nickname") or "").strip()
+    if not who or not ui_name.startswith(who):
+        return False
+    txt = str(post.get("text") or "").strip()
+    if txt:
+        return txt[:10] in ui_name
+    # 纯图片/纯视频：Name 里会写「包含N张图片」或「视频」
+    if post.get("images"):
+        return ("图片" in ui_name) or ("视频" in ui_name)
+    if post.get("videos"):
+        return "视频" in ui_name
+    # 纯文字但空正文 / 分享卡片之类：昵称对上就算
+    return True
+
+
+def scan_and_interact(mo, posts, seen, *,
+                      judge, do_act, on_seen, log,
+                      max_rounds: int = 12, step: int = 600,
+                      list_rect=None, max_per_run: int = 8,
+                      allow_fallback: bool = True,
+                      my_nick: str = "") -> dict:
+    """一遍过：从上往下逐条「看到 -> 判断 -> 就地做」。
+
+    参数
+    ----
+    mo            Moment 实例
+    posts         数据库里的动态列表（时间倒序，已过滤掉自己发的）
+    seen          已看过的 post_id 集合（就地修改由 on_seen 负责持久化）
+    judge         callable(post, item) -> {"like": bool, "comment": str}
+    do_act        callable(item, act) -> dict（点赞/评论结果）
+    on_seen       callable(pid)：记录"这条看过了"并落盘
+    log           callable(str)：写日志
+    max_rounds    最多往下滑几段
+    step          每段滑多少
+    max_per_run   这一轮最多处理几条（防止一口气全做）
+    my_nick       机器人自己的昵称，用于点赞判重
+
+    返回
+    ----
+    {"hit_seen": bool, "processed": [post...], "liked": [...],
+     "commented": [...], "errs": [...]}
+    """
+    out = {"hit_seen": False, "processed": [], "liked": [],
+           "commented": [], "errs": []}
+
+    # 数据库里的动态按时间倒序；同名多条靠「按顺序认领」区分。
+    # **不记 UI 条目**（2026-11-13 改）：原来用 control.GetRuntimeId() 去重，
+    # 但滚动后 RuntimeId 会复用 —— 新条目被误判成"已处理"，
+    # 结果滑到新一屏也认领不出任何东西，表现为「连续两段没有新条目」提前结束。
+    # 现在只靠 `remaining` 消费：认领过的 post 会 pop 掉，天然不会重复。
+    remaining = list(posts)
+    idle_rounds = 0             # 连续多少段没处理到任何新东西
+
+    for rnd in range(max_rounds):
+        if len(out["processed"]) >= max_per_run:
+            log("[朋友圈] 这一轮已经处理了 {} 条，先停".format(len(out["processed"])))
+            break
+
+        try:
+            items = mo.GetMoments() or []
+        except Exception as e:
+            log(f"[朋友圈] 读界面条目失败：{type(e).__name__}")
+            break
+
+        if not items:
+            log("[朋友圈] 界面上没有渲染任何条目，停")
+            break
+
+        progressed = False
+        for it in items:
+            if len(out["processed"]) >= max_per_run:
+                break
+            nm = _ui_name(it)
+
+            # **按顺序认领**数据库里的动态：
+            # posts 和 UI 都是时间倒序，所以从前往后找第一个能对上的。
+            post = None
+            for idx, p in enumerate(remaining):
+                if _name_matches_post(nm, p):
+                    post = remaining.pop(idx)
+                    break
+            if post is None:
+                # 广告 / 不认识的条目，跳过
+                continue
+
+            pid = _post_id(post)
+
+            # **碰到上次看过的 -> 这就是边界，整轮结束**
+            if pid and pid in seen:
+                log("[朋友圈] 碰到上次看过的动态，这一轮到边界了")
+                out["hit_seen"] = True
+                return out
+
+            act = {"like": False, "comment": ""}
+            try:
+                act = judge(post, it) or act
+            except Exception as e:
+                out["errs"].append("判断失败：{}".format(type(e).__name__))
+                log(f"[朋友圈] 判断一条时出错：{type(e).__name__}")
+
+            want_like = bool(act.get("like"))
+            want_cmt = bool(act.get("comment"))
+
+            # 点赞判重：「赞」是开关，赞过再点会取消
+            if want_like and already_liked(post, my_nick):
+                log("[朋友圈] 这条已经赞过，跳过点赞")
+                want_like = False
+            act = {"like": want_like, "comment": act.get("comment") if want_cmt else ""}
+
+            if want_like or want_cmt:
+                try:
+                    res = do_act(it, act) or {}
+                except Exception as e:
+                    res = {"err": "{}: {}".format(type(e).__name__, e)}
+                if res.get("like"):
+                    out["liked"].append(str(post.get("nickname") or ""))
+                if res.get("comment"):
+                    out["commented"].append(
+                        (str(post.get("nickname") or ""), act.get("comment") or ""))
+                if res.get("err"):
+                    out["errs"].append(str(res["err"])[:60])
+                    log(f"[朋友圈] ⚠️ {str(res['err'])[:60]}")
+                else:
+                    tags = []
+                    if res.get("like"):
+                        tags.append("赞")
+                    if res.get("comment"):
+                        tags.append("评")
+                    if tags:
+                        log("[朋友圈] 已{} | {}".format(
+                            "、".join(tags),
+                            describe(post)[:60]))
+
+            # 不管成没成，都记为看过（失败也不重试，否则一条坏的卡住整轮）
+            if pid:
+                on_seen(pid)
+            out["processed"].append(post)
+            progressed = True
+
+        # **没进展就加大滑动量**（2026-11-13）：
+        # 朋友圈一条纯图片动态可能高 1000px，固定 600 单位（约 5 格滚轮）
+        # 滑不过去，下一屏读到的还是原来那一两条 —— 表现为"连续两段没有新条目"
+        # 提前结束，永远到不了 seen 边界。
+        if not progressed:
+            idle_rounds += 1
+            if idle_rounds >= 3:
+                log("[朋友圈] 连续三段没有新条目，滑到底了")
+                break
+        else:
+            idle_rounds = 0
+
+        _eff_step = step if idle_rounds == 0 else int(step * (1 + idle_rounds * 0.8))
+        try:
+            scroll_down(step=_eff_step, list_rect=list_rect,
+                        allow_fallback=allow_fallback)
+            _import_time.sleep(1.2)
+        except Exception as e:
+            log(f"[朋友圈] 下滑失败：{type(e).__name__}")
+            break
+
+    return out
 
 def scroll_until_seen(read_fn, seen_ids, max_rounds: int = 12,
                       per_round: int = 3, list_rect=None,

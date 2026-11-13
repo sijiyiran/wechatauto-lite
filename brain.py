@@ -2969,6 +2969,23 @@ class GroupBrain:
                     pass
         return wait
 
+    def is_portable(self) -> bool:
+        """当前是不是阉割版（便携版）。
+
+        **2026-11-13 加**：阉割版和开发版是同一份代码，只靠 config 区分。
+        光靠 `moments.enabled=False` 不够 —— 用户手改配置就能开回来。
+        所以朋友圈/好友申请/转述这些"扩展功能"在入口再查一次版本，
+        portable 一律拒绝执行，日志说明原因。
+        """
+        try:
+            ui = self.cfg.get("ui") or {}
+            ed = str(ui.get("edition") or "").strip().lower()
+            if not ed:
+                ed = "dev" if bool(ui.get("extra_tabs", True)) else "portable"
+            return ed == "portable"
+        except Exception:
+            return False
+
     def _is_owner(self, r: dict, uid: str = "") -> bool:
         """这条消息是不是主人发的。
 
@@ -3454,6 +3471,9 @@ class GroupBrain:
             log(f"[好友申请] 回话异常：{type(e).__name__}: {str(e)[:80]}")
 
     def maybe_accept_friends(self) -> None:
+        # **阉割版没有好友申请**（2026-11-13 硬禁用）
+        if self.is_portable():
+            return
         """按需检查并自动通过好友申请，查完**回一句**。
 
         触发源（见 friend_requests.should_check / take_flag）：
@@ -3676,6 +3696,11 @@ class GroupBrain:
         save_state(self.state)
 
     def maybe_moments(self, force_reason: str = "") -> None:
+        # **阉割版没有朋友圈**（2026-11-13 硬禁用）
+        if self.is_portable():
+            if force_reason:
+                log("[朋友圈] 便携版已禁用此功能（开发版才有）")
+            return
         """看一次朋友圈：读 -> 判断 -> 点赞/评论。
 
         触发：``moments_due()``（6:30/12:00/21:00），或群里有人点名让她看。
@@ -4431,10 +4456,11 @@ class GroupBrain:
 
             # **转述指令："帮我把这段话发给 X"。**
             # 只认主人（配置里的 relay.owner_wxid）—— 别人发同样的字不动。
+            # **阉割版没有转述**（2026-11-13 硬禁用）
             try:
                 import relay as _RL
                 _rc = (self.cfg.get("relay") or {})
-                if _rc.get("enabled", False):
+                if _rc.get("enabled", False) and not self.is_portable():
                     _owner = str(_rc.get("owner_wxid") or "")
                     if _owner and str(uid) == _owner:
                         _cmd = next((r for r in rows

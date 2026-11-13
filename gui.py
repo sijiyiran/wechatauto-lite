@@ -42,7 +42,7 @@ try:
 except Exception:
     _UPD = None
 
-VERSION = "2.8"
+VERSION = "2.9"
 
 # ─────────────────────────────────────────────────────────────── 色板 ──
 # 取自 awesome-design-md / linear.app DESIGN.md，按桌面小窗微调过对比度。
@@ -1232,6 +1232,27 @@ class App(tk.Tk):
         inner = tk.Frame(body, bg=C["term-bg"],
                          highlightbackground=C["hairline"], highlightthickness=1)
         inner.pack(fill="both", expand=True)
+
+        # **收起 / 展开日志**（用户要求"日志过长自动隐藏"）。
+        # 收起后整块日志区隐藏，只留按钮，界面清爽。
+        self._log_collapsed = False
+
+        def _toggle_log():
+            try:
+                if self._log_collapsed:
+                    inner.pack(fill="both", expand=True)
+                    _btn_log.configure(text="收起日志")
+                    self._log_collapsed = False
+                else:
+                    inner.pack_forget()
+                    _btn_log.configure(text="展开日志")
+                    self._log_collapsed = True
+            except Exception:
+                pass
+
+        _btn_log = ttk.Button(head, text="收起日志", style="Ghost.TButton",
+                              cursor="hand2", command=_toggle_log)
+        _btn_log.pack(side="right", padx=(0, 6))
         self.log = scrolledtext.ScrolledText(
             inner, height=16, wrap="none", font=(MONO, 9),
             background=C["term-bg"], foreground=C["term-fg"],
@@ -1616,6 +1637,11 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    # 日志 Text 最多保留多少行 —— 超了删最老的。
+    # 不设上限的话，日志跑一整天后 Text 控件会越来越卡：
+    # 每次 insert 都要重新布局整段文本，几千行之后界面明显发顿。
+    MAX_LOG_LINES = 2000
+
     def append_log(self, lines):
         if not lines:
             return
@@ -1634,6 +1660,17 @@ class App(tk.Tk):
         # 眼睛能立刻定位"刚来的几行"。上一批的标记先撤掉，只亮最新的。
         self.log.tag_remove("fresh", "1.0", "end")
         self.log.tag_add("fresh", first, "end-1c")
+
+        # **超过上限就删掉最老的行**（用户要求"日志过长自动隐藏"）。
+        # 只删前面多出来的部分，不会闪一下。
+        try:
+            total = int(self.log.index("end-1c").split(".")[0])
+            over = total - self.MAX_LOG_LINES
+            if over > 0:
+                self.log.delete("1.0", "{}.0".format(over + 1))
+        except Exception:
+            pass
+
         self.log.configure(state="disabled")
         if motion_ok():
             animate_tag_bg(self.log, "fresh",

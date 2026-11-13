@@ -10,7 +10,7 @@
 ; ─────────────────────────────────────────────────────────────
 
 #define MyAppName "WeChat 自动回复"
-#define MyAppVersion "2.9"
+#define MyAppVersion "3.1"
 #define MyAppPublisher "DeepSeek 大肥鱼"
 #define MyAppExeName "WeChatAutoReply"
 #define MyAppId "{{8F3A7C21-4B9E-4D62-A5C8-1E7F9D2B6A43}"

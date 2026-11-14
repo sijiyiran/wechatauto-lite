@@ -193,9 +193,12 @@ DECIDE_PROMPT = """你在刷朋友圈。下面是最近的朋友圈动态（越�
 每条都留言就不是刷朋友圈了，是挨个点评 —— 太假。
 
 **输出**：严格一个 JSON 数组，每个元素对应一条，顺序不变：
-[{"idx": 0, "like": true, "comment": "这是哪"}, {"idx": 1, "like": false, "comment": ""}]
+[{"idx": 0, "like": true, "comment": "这是哪", "reason": "游戏截图，想问一句"},
+ {"idx": 1, "like": false, "comment": "", "reason": "广告，没兴趣"}]
 
 不想互动就 like=false、comment=""。
+**每条都要给 reason**（一句话，不超过 20 字）：为什么点赞/评论，或者为什么划过去。
+这个 reason 是给后台排查用的，用户会看 —— 别写"无"这种废话，要写真实理由。
 **该互动就互动** —— 全是 false 也很奇怪，像根本没看。
 """
 
@@ -210,16 +213,16 @@ def decide(cfg: dict, api_key: str, persona: str, lines: list[str],
     try:
         raw = brain.llm_judge_raw(cfg, api_key, persona, user)
     except Exception:
-        return [{"like": False, "comment": ""} for _ in lines]
+        return [{"like": False, "comment": "", "reason": "判断失败"} for _ in lines]
     txt = raw.strip()
     m = re.search(r"\[.*\]", txt, re.S)
     if not m:
-        return [{"like": False, "comment": ""} for _ in lines]
+        return [{"like": False, "comment": "", "reason": "没解析出结果"} for _ in lines]
     try:
         arr = json.loads(brain.repair_json_strings(m.group(0)))
     except Exception:
-        return [{"like": False, "comment": ""} for _ in lines]
-    out = [{"like": False, "comment": ""} for _ in lines]
+        return [{"like": False, "comment": "", "reason": "结果不是合法 JSON"} for _ in lines]
+    out = [{"like": False, "comment": "", "reason": ""} for _ in lines]
     for item in arr:
         if not isinstance(item, dict):
             continue
@@ -231,6 +234,7 @@ def decide(cfg: dict, api_key: str, persona: str, lines: list[str],
             out[i] = {
                 "like": bool(item.get("like")),
                 "comment": str(item.get("comment") or "").strip()[:30],
+                "reason": str(item.get("reason") or "").strip()[:40],
             }
     # **评论条数硬性限制**：提示词说了"两三条就够"它经常不听，
     # 实测 8 条动态能评 5~6 条，像挨个点评。这里直接砍到 max_comments，
@@ -1137,6 +1141,21 @@ def click_refresh(gui=None) -> bool:
     except Exception:
         return False
 
+
+def _scroll_point(rect) -> tuple:
+    """滚轮该落在哪个坐标。
+
+    **不能用列表中心**（2026-11-14 实测）：朋友圈每条动态的图片、
+    正文、视频都是独立控件，鼠标落在中心多半压在图片区上，
+    滚轮事件被内容控件吃掉，外面的滚动容器收不到 —— 界面一动不动。
+    实测左侧边缘（头像右侧那条窄缝）最稳，右侧边缘也行。
+    """
+    l, t, r, b = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+    x = l + 30
+    y = (t + b) // 2
+    return (x, y)
+
+
 def scroll_to_top(times: int = 20, list_rect=None,
                   allow_fallback: bool = False) -> None:
     """把**朋友圈列表**滚到最顶部，让最新动态渲染出来。
@@ -1160,20 +1179,17 @@ def scroll_to_top(times: int = 20, list_rect=None,
     cx = cy = None
     if list_rect:
         try:
-            cx = int((list_rect[0] + list_rect[2]) / 2)
-            cy = int((list_rect[1] + list_rect[3]) / 2)
+            cx, cy = _scroll_point(list_rect)
         except Exception:
             cx = cy = None
     if cx is None:
         _r = find_list_rect(allow_fallback=allow_fallback)
         if _r:
-            cx = int((_r[0] + _r[2]) / 2)
-            cy = int((_r[1] + _r[3]) / 2)
+            cx, cy = _scroll_point(_r)
     if cx is None:
         r = find_list_rect(allow_fallback=allow_fallback)
         if r:
-            cx = int((r[0] + r[2]) / 2)
-            cy = int((r[1] + r[3]) / 2)
+            cx, cy = _scroll_point(r)
     if cx is None:
         # 找不到朋友圈列表且不允许兜底 -> **不滚**，别乱动别人的窗口
         return
@@ -1279,8 +1295,7 @@ def warmup_scroll(rect=None, step: int = 240, allow_fallback: bool = True) -> No
     except Exception:
         pass
     try:
-        cx = int((r[0] + r[2]) / 2)
-        cy = int((r[1] + r[3]) / 2)
+        cx, cy = _scroll_point(r)
         pyautogui.FAILSAFE = False
         pyautogui.moveTo(cx, cy, duration=0.15)
         _t.sleep(0.15)
@@ -1319,8 +1334,7 @@ def scroll_down(step: int = 600, list_rect=None,
     except Exception:
         pass
     try:
-        cx = int((r[0] + r[2]) / 2)
-        cy = int((r[1] + r[3]) / 2)
+        cx, cy = _scroll_point(r)
         pyautogui.FAILSAFE = False
         pyautogui.moveTo(cx, cy, duration=0.15)
         _t.sleep(0.1)
@@ -1330,6 +1344,110 @@ def scroll_down(step: int = 600, list_rect=None,
     except Exception:
         return False
 
+
+
+def _ui_names_sig(mo) -> tuple:
+    """当前 UI 条目的指纹（名字序列），用来判断滚动有没有真的生效。"""
+    try:
+        items = mo.GetMoments() or []
+    except Exception:
+        return ()
+    out = []
+    for it in items:
+        try:
+            c = getattr(it, "control", None)
+            out.append(str(getattr(c, "Name", "") or ""))
+        except Exception:
+            out.append("")
+    return tuple(out)
+
+
+def _ui_nicks(mo) -> set:
+    """当前 UI 里出现的所有「昵称」（取 Name 的第一个空格前片段）。
+
+    比整串 Name 稳：同一条动态的 Name 会因为图片加载完成从
+    「包含0张图片」变成「包含1张图片」，那是假变化 —— 用它判断滚动
+    会误以为动了。昵称集合变了才是真的翻页。
+    """
+    out = set()
+    for nm in _ui_names_sig(mo):
+        head = nm.split(" ")[0].strip() if nm else ""
+        if head:
+            out.add(head)
+    return out
+
+
+def scroll_down_verified(mo, step: int = 900, list_rect=None,
+                         allow_fallback: bool = True, tries: int = 3) -> bool:
+    """在朋友圈列表里向下滚，**并验证内容真的变了**。
+
+    为什么要验证：实测微信 4.2 上有时候滚轮事件被吞，界面一动不动，
+    但旧版 scroll_down 照样 return True —— 上层以为滑了，然后报
+    「连续三段没有新条目，滑到底了」提前收工，下面的动态永远处理不到。
+
+    返回 True = 内容确实变了；False = 试了 tries 轮都没滚动。
+    """
+    try:
+        import time as _t
+    except Exception:
+        return False
+
+    r = list_rect or find_list_rect(allow_fallback=allow_fallback)
+    if not r:
+        return False
+    cx, cy = _scroll_point(r)
+
+    try:
+        bring_wechat_front()
+        _t.sleep(0.2)
+    except Exception:
+        pass
+
+    before = _ui_nicks(mo)
+
+    for attempt in range(tries):
+        try:
+            # 方式 A：mouse_event 滚轮（比 pyautogui 更底层，grid 数可调）
+            # 注意：不要点击 —— 左边就是头像，点一下会打开详情页。
+            import ctypes
+            u = ctypes.windll.user32
+            u.SetCursorPos(cx, cy)
+            _t.sleep(0.12)
+            # **先向上滚 3 格"离开顶部"**（2026-11-14 实测）。
+            # 朋友圈在最顶部时，向下的滚轮会被识别成「下拉刷新」而不是滚动，
+            # 列表一动不动 —— 这是"滚不动"的主因。先往上蹭两格跳出顶部就好了。
+            if attempt == 0:
+                for _g in range(3):
+                    u.mouse_event(0x0800, 0, 0, 120, 0)   # 向上
+                    _t.sleep(0.05)
+                _t.sleep(0.35)
+            grids = max(1, int(step) // 120) * (attempt + 1)
+            for _g in range(grids):
+                u.mouse_event(0x0800, 0, 0, -120, 0)   # 向下
+                _t.sleep(0.05)
+            _t.sleep(2.2)     # 等渲染（朋友圈是懒渲染，1.4s 不够）
+
+            after = _ui_nicks(mo)
+            if after - before:
+                return True
+
+            # 方式 B：pyautogui（部分环境下它更管用）
+            try:
+                import pyautogui
+                pyautogui.FAILSAFE = False
+                pyautogui.moveTo(cx, cy, duration=0.15)
+                _t.sleep(0.1)
+                pyautogui.scroll(-int(step) * (attempt + 1))
+                _t.sleep(2.2)
+                after = _ui_nicks(mo)
+                if after - before:
+                    return True
+            except Exception:
+                pass
+        except Exception:
+            continue
+
+    return False
 
 def scroll_until_item(mo, post, max_rounds: int = 10, step: int = 600,
                       list_rect=None, allow_fallback: bool = True,
@@ -1772,6 +1890,48 @@ def scan_and_interact(mo, posts, seen, *,
     remaining = list(posts)
     idle_rounds = 0             # 连续多少段没处理到任何新东西
 
+    # **先确保界面真的渲染出来了**（2026-11-14）。
+    # 踩过：12:00 那轮日志显示「UI 上看到 1 条」就开跑了，
+    # 而实际界面能显示 3 条 —— 少读的那两条根本没机会被处理。
+    # 朋友圈是懒渲染，打开后要等一会/多读几次才稳定。
+    _probe = []
+    for _warm_i in range(4):
+        try:
+            _probe = mo.GetMoments() or []
+        except Exception:
+            _probe = []
+        if len(_probe) >= 2:
+            break
+        # **读不到 2 条就重建 Moment 实例**（2026-11-14 实测关键）。
+        # 调用方传进来的 mo 可能是早期 open_and_refresh 建的，
+        # 它缓存的 UI 节点已经陈旧 —— 实测同一个窗口：
+        #   旧实例 GetMoments() -> 1 条（还是 3 天前的）
+        #   新建实例 GetMoments() -> 2 条（琦琦 2分钟前、澜 2小时前）
+        # 重建一次往往立刻就能看到真实的最新动态。
+        if _warm_i in (0, 2):
+            try:
+                from wechatauto import Moment as _M2, WeChat as _W2
+                _mo2 = _M2(_W2())
+                _p2 = _mo2.GetMoments() or []
+                if len(_p2) > len(_probe):
+                    mo = _mo2
+                    _probe = _p2
+                    if len(_probe) >= 2:
+                        break
+            except Exception:
+                pass
+        # **只渲染出 1 条时先小滑一下逼它渲染**（2026-11-14）
+        # 实测同一条朋友圈，手动调 open_and_refresh 能看到 3 条，
+        # 走流程却只有 1 条 —— 懒渲染没跟上的时候必须主动推一把。
+        if _warm_i == 0:
+            try:
+                warmup_scroll(step=240, list_rect=list_rect, allow_fallback=True)
+            except Exception:
+                pass
+        _import_time.sleep(1.2)
+    if _probe:
+        log("[朋友圈] 界面已渲染 {} 条，开始逐条处理".format(len(_probe)))
+
     for rnd in range(max_rounds):
         if len(out["processed"]) >= max_per_run:
             log("[朋友圈] 这一轮已经处理了 {} 条，先停".format(len(out["processed"])))
@@ -1788,6 +1948,8 @@ def scan_and_interact(mo, posts, seen, *,
             break
 
         progressed = False
+        seen_in_screen = 0        # 本屏里"已看过"的条数
+        known_in_screen = 0       # 本屏里能认领到的条数
         for it in items:
             if len(out["processed"]) >= max_per_run:
                 break
@@ -1804,13 +1966,16 @@ def scan_and_interact(mo, posts, seen, *,
                 # 广告 / 不认识的条目，跳过
                 continue
 
+            known_in_screen += 1
             pid = _post_id(post)
 
-            # **碰到上次看过的 -> 这就是边界，整轮结束**
+            # **已看过的先跳过，但不算"到边界"**（2026-11-14 改）。
+            # 原来一碰到 seen 就 return —— 但第一屏往往只渲染 1~2 条，
+            # 碰巧是看过的就直接结束，屏幕下方的新动态永远轮不到。
+            # 现在：本屏里看过的跳过继续看，只有**整屏都没有新的**才算到边界。
             if pid and pid in seen:
-                log("[朋友圈] 碰到上次看过的动态，这一轮到边界了")
-                out["hit_seen"] = True
-                return out
+                seen_in_screen += 1
+                continue
 
             act = {"like": False, "comment": ""}
             try:
@@ -1828,6 +1993,7 @@ def scan_and_interact(mo, posts, seen, *,
                 want_like = False
             act = {"like": want_like, "comment": act.get("comment") if want_cmt else ""}
 
+            _why = str(act.get("reason") or "").strip()
             if want_like or want_cmt:
                 try:
                     res = do_act(it, act) or {}
@@ -1848,15 +2014,37 @@ def scan_and_interact(mo, posts, seen, *,
                     if res.get("comment"):
                         tags.append("评")
                     if tags:
-                        log("[朋友圈] 已{} | {}".format(
+                        log("[朋友圈] 已{} | {}{}".format(
                             "、".join(tags),
-                            describe(post)[:60]))
+                            describe(post)[:60],
+                            (" | 原因：" + _why) if _why else ""))
+            else:
+                # **没动作也要留日志**（2026-11-14 修）。
+                # 原来判断"不互动"时一声不吭就标记 seen —— 用户看到某条没被点赞，
+                # 完全无法判断是"模型不想点"还是"根本没滑到这条"。
+                log("[朋友圈] 划过（不赞不评）| {}{}".format(
+                    describe(post)[:60],
+                    (" | 原因：" + _why) if _why else ""))
 
             # 不管成没成，都记为看过（失败也不重试，否则一条坏的卡住整轮）
             if pid:
                 on_seen(pid)
             out["processed"].append(post)
             progressed = True
+
+        # **整屏都是看过的 -> 真到边界了**（2026-11-14）
+        #
+        # 但要防一个坑：朋友圈界面经常只渲染 1 条（懒渲染/窗口高度），
+        # 而下面其实还有没看过的。第一屏就 1 条且是 seen 时，
+        # 不能直接判"到边界"，得先往下滑一下看看有没有更多。
+        # 判据：本屏 >= 2 条且全看过，或者已经滑过 idle_rounds 次仍没新的。
+        if (not progressed) and known_in_screen > 0 and seen_in_screen >= known_in_screen:
+            if known_in_screen >= 2 or idle_rounds >= 2:
+                log("[朋友圈] 这一屏 {} 条都看过了，到边界了".format(known_in_screen))
+                out["hit_seen"] = True
+                return out
+            # 只渲染出 1 条且是看过的 -> 往下滑一段再确认
+            log("[朋友圈] 这屏只渲染了 1 条（已看过），往下滑确认一下")
 
         # **没进展就加大滑动量**（2026-11-13）：
         # 朋友圈一条纯图片动态可能高 1000px，固定 600 单位（约 5 格滚轮）
@@ -1872,9 +2060,13 @@ def scan_and_interact(mo, posts, seen, *,
 
         _eff_step = step if idle_rounds == 0 else int(step * (1 + idle_rounds * 0.8))
         try:
-            scroll_down(step=_eff_step, list_rect=list_rect,
-                        allow_fallback=allow_fallback)
-            _import_time.sleep(1.2)
+            # **用验证版**：滚完确认内容真变了，没变会自动换方式重试
+            _moved = scroll_down_verified(
+                mo, step=_eff_step, list_rect=list_rect,
+                allow_fallback=allow_fallback)
+            if not _moved:
+                log("[朋友圈] 滚不动了（试了多种方式内容都没变），停")
+                break
         except Exception as e:
             log(f"[朋友圈] 下滑失败：{type(e).__name__}")
             break

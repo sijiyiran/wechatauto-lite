@@ -1,7 +1,7 @@
 {
-  "version": "3.1",
+  "version": "3.2",
   "edition": "portable",
-  "generated_at": "2026-11-13T22:30:43",
+  "generated_at": "2026-11-14T11:43:26",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -12,8 +12,8 @@
       "size": 123058
     },
     "brain.py": {
-      "sha256": "bd27de056e0466df4022aeed0e455cb5d26718f68ba9eaaee54e97d648e265a4",
-      "size": 377757
+      "sha256": "9a19cd42a6d242cf37dbb2cf5dfa63b71205542d5817c4488c2990a328957e59",
+      "size": 378931
     },
     "bridge.py": {
       "sha256": "9273009bdea4746d1b71f27b8e6fcff7ef4c35a8b834a44e125ce47ad0ddeaa6",
@@ -44,7 +44,7 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "dd584c29c7d6ec02e8fb469dc640716658c5fcf8d6b371a7b59e0e39e3e60bb1",
+      "sha256": "610887c20045eadb4f7a8de983be823e5a862a86b4500b8049b7c49057b0fecb",
       "size": 135858
     },
     "install-keepalive.ps1": {

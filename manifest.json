@@ -1,7 +1,7 @@
 {
-  "version": "3.2",
+  "version": "3.5",
   "edition": "portable",
-  "generated_at": "2026-11-14T11:43:26",
+  "generated_at": "2026-11-14T13:26:11",
   "files": {
     "START.cmd": {
       "sha256": "7021898bf0791c2939f8b409935ce1b127457a83d77004f08c936510dbb08e7a",
@@ -44,7 +44,7 @@
       "size": 19636
     },
     "gui.py": {
-      "sha256": "610887c20045eadb4f7a8de983be823e5a862a86b4500b8049b7c49057b0fecb",
+      "sha256": "8ffb35b8d471568b083edb7ea76c92314119dc1a1975cd575352ee81a1c441d8",
       "size": 135858
     },
     "install-keepalive.ps1": {
@@ -68,8 +68,8 @@
       "size": 29734
     },
     "moments.py": {
-      "sha256": "80d619ca7c2db47a87b78f02d4418eb4c225f83be9a2b8655be4b8a56825d1ad",
-      "size": 77238
+      "sha256": "8df55802e3102e0c8cad635aa26c9804ddeaca0a9e016271a2f033d16f5ed832",
+      "size": 86044
     },
     "open-brain.cmd": {
       "sha256": "0e6012c817cc9c506ffc439db776afc62e86d30399137174af0564dbe7a961d8",

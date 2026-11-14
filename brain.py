@@ -5424,7 +5424,10 @@ class GroupBrain:
 
         rows = pend["rows"]
         self._pending[uid] = {"rows": [], "first": 0.0, "last": 0.0, "need": 0.0}
-        # 判断之后再推水位：中途崩了/重启也不会把这些消息丢掉
+        # **存一下旧水位**，判断失败时好回滚（2026-11-14 修）。
+        # 原来这里注释写着"判断之后再推水位"，但代码是判断之前就推了：
+        # 402 失败 return [] 后水位已经越过这批消息，充值恢复也再也取不到。
+        _wm_before = self.state.setdefault("watermarks", {}).get(uid)
         self.state["watermarks"][uid] = max(int(r.get("sort_seq") or 0) for r in rows)
         save_state(self.state)
         if len(rows) > 1:
@@ -5593,9 +5596,26 @@ class GroupBrain:
             if _pj > 15:
                 log(f"[{self.nick(uid)}] ⚠️ 模型判断耗时 {_pj:.0f}s")
         except LLMBlocked as e:
+            # **回滚水位**（2026-11-14）：这批消息没判断成，得留着下次重试。
+            # 不然 402 那一下就把用户 @ 她的消息永久吃掉了。
+            try:
+                if _wm_before is not None:
+                    self.state["watermarks"][uid] = _wm_before
+                    save_state(self.state)
+                    log(f"[{self.nick(uid)}] 水位已回滚到 {_wm_before}，这批消息下次重试")
+            except Exception:
+                pass
             self._handle_llm_blocked(e, uid=uid, notify=True)
             return []
         except Exception as e:
+            # 判断异常同样回滚，别把消息吞了
+            try:
+                if _wm_before is not None:
+                    self.state["watermarks"][uid] = _wm_before
+                    save_state(self.state)
+                    log(f"[{self.nick(uid)}] 水位已回滚到 {_wm_before}，这批消息下次重试")
+            except Exception:
+                pass
             log(f"判定失败（{self.nick(uid)}）：{type(e).__name__}: {e}")
             return []
 

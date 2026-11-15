@@ -1,0 +1,9 @@
+{
+  "latest": "4.1",
+  "min_version": "4.1",
+  "notes": "v4.1：修复了 v4.0 的更新机制（改为下载完整安装包），另外修正了 v4.0 稳定版配置被误设为开发版的问题。",
+  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.1/WeChatAutoReply-Setup-4.1.exe",
+  "setup_sha256": "497f9c23ee869758a94124a1f64b5a16bbb32b127cfb8c2c469e67f0d457e807",
+  "setup_size": 90997908,
+  "released_at": "2026-11-15"
+}

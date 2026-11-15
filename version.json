@@ -1,9 +1,9 @@
 {
-  "latest": "4.2",
-  "min_version": "4.2",
-  "notes": "v4.2：稳定版精简（只保留群聊/私聊/夜间模式），关闭红包转账、拍一拍、表情包、看图、群友画像、余额提醒。",
-  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.2/WeChatAutoReply-Setup-4.2.exe",
-  "setup_sha256": "78ad6f36892882dcefaeec789fe3b27b878b3680f64877853d63ac7a4f219dc3",
-  "setup_size": 91002559,
+  "latest": "4.4",
+  "min_version": "4.4",
+  "notes": "v4.4：稳定版精简（只保留群聊/私聊/夜间模式），关闭红包转账、拍一拍、表情包、看图、群友画像、余额提醒。",
+  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.4/WeChatAutoReply-Setup-4.4.exe",
+  "setup_sha256": "4f6b98bd8976df38d167b4a0506fca3065df8da5c2aa3544655b70e9f4efac56",
+  "setup_size": 91018693,
   "released_at": "2026-11-15"
 }

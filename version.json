@@ -1,7 +1,7 @@
 {
   "latest": "4.7",
   "min_version": "4.7",
-  "notes": "v4.7：稳定版精简（只保留群聊/私聊/夜间模式），关闭红包转账、拍一拍、表情包、看图、群友画像、余额提醒；修朋友圈滚动跳过内容和刷新键没点的问题。",
+  "notes": "本次更新修复了一些已知问题，提升了稳定性。",
   "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.7/WeChatAutoReply-Setup-4.7.exe",
   "setup_sha256": "d27e719fc46b6703f8e39e03c3369869ec1f6dbdf188927d837a3890e87f5f70",
   "setup_size": 91032481,

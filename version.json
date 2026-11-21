@@ -1,9 +1,9 @@
 {
-  "latest": "4.6",
-  "min_version": "4.6",
-  "notes": "v4.6：稳定版精简（只保留群聊/私聊/夜间模式），关闭红包转账、拍一拍、表情包、看图、群友画像、余额提醒；修朋友圈滚动跳过内容和刷新键没点的问题。",
-  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.6/WeChatAutoReply-Setup-4.6.exe",
-  "setup_sha256": "950a6ccbeb5238753710c7f669d46c1bda1b1ef2fcfd5b97d25b68bbd8913f8c",
-  "setup_size": 91025770,
-  "released_at": "2026-11-16"
+  "latest": "4.7",
+  "min_version": "4.7",
+  "notes": "v4.7：稳定版精简（只保留群聊/私聊/夜间模式），关闭红包转账、拍一拍、表情包、看图、群友画像、余额提醒；修朋友圈滚动跳过内容和刷新键没点的问题。",
+  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.7/WeChatAutoReply-Setup-4.7.exe",
+  "setup_sha256": "d27e719fc46b6703f8e39e03c3369869ec1f6dbdf188927d837a3890e87f5f70",
+  "setup_size": 91032481,
+  "released_at": "2026-11-21"
 }

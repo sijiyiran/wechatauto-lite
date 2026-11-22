@@ -1,9 +1,9 @@
 {
-  "latest": "5.0",
-  "min_version": "5.0",
-  "notes": "修复了安装版上所有消息都「判断失败」、机器人与群友完全无法对话的问题；控制面板新增「正在启动」状态，守护刚起来、心跳还没写出时会明确显示正在启动；修复了部分机器上双击控制面板打不开的问题。",
-  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v5.0/WeChatAutoReply-Setup-5.0.exe",
-  "setup_sha256": "b8790c63cf58f3923b95a34304307ccacd022de507753c76694ff9c2c207941e",
-  "setup_size": 91103947,
+  "latest": "5.1",
+  "min_version": "5.1",
+  "notes": "移除发布包里误带的提示词和表情包素材文件（它们应当只以加密形式存在）；修复了英文昵称的联系人无法收到私聊回复的问题；设置页的触发词支持一键智能生成（会读人格卡，生成后可手工修改）。",
+  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v5.1/WeChatAutoReply-Setup-5.1.exe",
+  "setup_sha256": "331af1d3d6efa32583b34e8ddfe1c2ad809e905d2738cb464231314fb52e2de0",
+  "setup_size": 89127741,
   "released_at": "2026-11-22"
 }

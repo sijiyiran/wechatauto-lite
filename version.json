@@ -1,9 +1,9 @@
 {
-  "latest": "4.8",
-  "min_version": "4.8",
-  "notes": "修复了控制面板「重启」和「停止」按钮会导致软件直接退出的问题；修复了守护进程在部分机器上无法自动启动的问题；优化了控制面板流畅度，界面不再卡顿，重启后不再误报超时。",
-  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.8/WeChatAutoReply-Setup-4.8.exe",
-  "setup_sha256": "1dd0a5098f91100caaa00dc04ef910ae54e8e6e55485afcd8f147a76d2f14bb6",
-  "setup_size": 91069110,
+  "latest": "4.9",
+  "min_version": "4.9",
+  "notes": "修复了控制面板在安装版上显示守护进程「未运行」的问题；修复了关闭窗口时残留守护进程的问题；检查更新统一改为下载完整安装包（增量更新对安装版无效）。",
+  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.9/WeChatAutoReply-Setup-4.9.exe",
+  "setup_sha256": "19c066b7e4142110d379bc2f194556e70680c2873cf5a085dd947d39f59e5ddc",
+  "setup_size": 91070219,
   "released_at": "2026-11-22"
 }

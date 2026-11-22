@@ -1,9 +1,9 @@
 {
-  "latest": "4.9",
-  "min_version": "4.9",
-  "notes": "修复了控制面板在安装版上显示守护进程「未运行」的问题；修复了关闭窗口时残留守护进程的问题；检查更新统一改为下载完整安装包（增量更新对安装版无效）。",
-  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v4.9/WeChatAutoReply-Setup-4.9.exe",
-  "setup_sha256": "19c066b7e4142110d379bc2f194556e70680c2873cf5a085dd947d39f59e5ddc",
-  "setup_size": 91070219,
+  "latest": "5.0",
+  "min_version": "5.0",
+  "notes": "修复了安装版上所有消息都「判断失败」、机器人与群友完全无法对话的问题；控制面板新增「正在启动」状态，守护刚起来、心跳还没写出时会明确显示正在启动；修复了部分机器上双击控制面板打不开的问题。",
+  "setup_url": "https://github.com/sijiyiran/wechatauto-lite/releases/download/v5.0/WeChatAutoReply-Setup-5.0.exe",
+  "setup_sha256": "b8790c63cf58f3923b95a34304307ccacd022de507753c76694ff9c2c207941e",
+  "setup_size": 91103947,
   "released_at": "2026-11-22"
 }
